@@ -1,5 +1,6 @@
 <Solution>
   <Folder Name="/src/">
+    <Project Path="Rastrear.App/Rastrear.App.csproj" />
     <Project Path="Rastrear.Cli/Rastrear.Cli.csproj" />
     <Project Path="Rastrear.Core/Rastrear.Core.csproj" />
   </Folder>

@@ -12,4 +12,5 @@ Herramienta de IA aparte de Rodaje, con interfaz propia. Repositorio público `D
 
 - Fase 0 cerrada: esqueleto, licencia y `src\Rastrear.slnx`.
 - Fase 1 cerrada: `Rastrear.Core` (FFmpeg por tubería, `Rodaje.Analysis` para seguir y estabilizar, `Rodaje.Module.Vision` por el protocolo para detectar, quitar fondo y reencuadrar) y `Rastrear.Cli` con AOT (4,5 MB); 10 pruebas, 3 de ellas largas con `RODAJE_PRUEBAS_LARGAS=1` y el módulo publicado desde `externo/rodaje/modules/Rodaje.Module.Vision` (se pasa con `--modulo` o `RASTREAR_MODULOS`). Cifras en `docs/informe-fase-1.md`.
-- **Siguiente:** fase 2, interfaz WinUI 3 sobre `Rastrear.Core` (`..\PLAN.md` y `..\encargos\`).
+- Fase 2 cerrada (verificada por Claude): `Rastrear.App`, ventana WinUI 3 con Native AOT (7,8 MB) sobre `Rastrear.Core`: reproductor por ffmpeg (`Ui/PlayerFrameBuffer`), superposición, clic/arrastre → coordenadas del video (`Ui/ViewportCoordinateTransformer`), progreso y cancelación (`Ui/TaskExecutionController`), exportar; 18 pruebas. Admite `Rastrear.App.exe <video>`. Cifras y pendientes en `docs/informe-fase-2.md`; lo que juzga Daniel, en `docs/pruebas-a-mano.md`.
+- **Siguiente:** correcciones de las pruebas a mano de Daniel; máscara de fondo semitransparente en el visor (pendiente de la fase 2); fases comunes de `..\PLAN.md`.

@@ -17,6 +17,7 @@
   <ItemGroup>
     <InternalsVisibleTo Include="Rastrear.Tests" />
     <InternalsVisibleTo Include="Rastrear.Cli" />
+    <InternalsVisibleTo Include="Rastrear.App" />
   </ItemGroup>
 
 </Project>
