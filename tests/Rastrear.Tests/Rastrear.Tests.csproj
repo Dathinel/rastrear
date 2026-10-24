@@ -1,0 +1,37 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <IsPackable>false</IsPackable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <NoWarn>$(NoWarn);CA1707;CA1515;CA1861;CA2007;CA1849;CA1716</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <RuntimeHostConfigurationOption Include="System.Threading.ThreadPool.MinThreads" Value="32" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Rastrear.Core\Rastrear.Core.csproj" />
+    <ProjectReference Include="..\..\externo\rodaje\src\Rodaje.Analysis\Rodaje.Analysis.csproj" />
+    <ProjectReference Include="..\..\externo\rodaje\src\Rodaje.Modules.Protocol\Rodaje.Modules.Protocol.csproj" />
+    <ProjectReference Include="..\..\externo\rodaje\modules\Rodaje.Module.Echo\Rodaje.Module.Echo.csproj" />
+    <ProjectReference Include="..\..\externo\rodaje\modules\Rodaje.Module.Vision\Rodaje.Module.Vision.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.10.1" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="4.0.1">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+  </ItemGroup>
+
+</Project>

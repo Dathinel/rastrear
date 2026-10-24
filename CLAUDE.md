@@ -10,5 +10,6 @@ Herramienta de IA aparte de Rodaje, con interfaz propia. Repositorio público `D
 
 ## Estado (24-oct)
 
-- Fase 0 cerrada: esqueleto, licencia y `src\Rastrear.slnx` con un `Rastrear.Cli` vacío que compila y publica con AOT.
-- **Siguiente:** fase 1, la CLI que hace el trabajo, con pruebas (`..\PLAN.md` y `..\encargos\`).
+- Fase 0 cerrada: esqueleto, licencia y `src\Rastrear.slnx`.
+- Fase 1 cerrada: `Rastrear.Core` (FFmpeg por tubería, `Rodaje.Analysis` para seguir y estabilizar, `Rodaje.Module.Vision` por el protocolo para detectar, quitar fondo y reencuadrar) y `Rastrear.Cli` con AOT (4,5 MB); 10 pruebas, 3 de ellas largas con `RODAJE_PRUEBAS_LARGAS=1` y el módulo publicado desde `externo/rodaje/modules/Rodaje.Module.Vision` (se pasa con `--modulo` o `RASTREAR_MODULOS`). Cifras en `docs/informe-fase-1.md`.
+- **Siguiente:** fase 2, interfaz WinUI 3 sobre `Rastrear.Core` (`..\PLAN.md` y `..\encargos\`).

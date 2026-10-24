@@ -2,7 +2,7 @@
 
 Seguimiento y visión por IA para video en Windows, en tu PC y sin conexión: seguir un punto, quitar el fondo, detectar rostros y personas, reencuadrar un video horizontal a vertical siguiendo al sujeto y estabilizar.
 
-> En construcción: fase 0 (esqueleto). Todavía no hace nada.
+> En construcción: fase 1 cerrada (CLI con pruebas, cifras en `docs/informe-fase-1.md`); la interfaz llega en la fase 2.
 
 ## Cómo funciona
 

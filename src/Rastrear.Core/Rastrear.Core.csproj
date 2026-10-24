@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <IsAotCompatible>true</IsAotCompatible>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\externo\rodaje\src\Rodaje.Analysis\Rodaje.Analysis.csproj" />
+    <ProjectReference Include="..\..\externo\rodaje\src\Rodaje.Modules.Protocol\Rodaje.Modules.Protocol.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Rastrear.Tests" />
+    <InternalsVisibleTo Include="Rastrear.Cli" />
+  </ItemGroup>
+
+</Project>

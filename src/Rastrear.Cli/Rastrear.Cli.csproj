@@ -11,4 +11,8 @@
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
   </PropertyGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="..\Rastrear.Core\Rastrear.Core.csproj" />
+  </ItemGroup>
+
 </Project>

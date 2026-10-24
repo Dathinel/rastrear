@@ -1,3 +1,9 @@
 <Solution>
-  <Project Path="Rastrear.Cli/Rastrear.Cli.csproj" />
+  <Folder Name="/src/">
+    <Project Path="Rastrear.Cli/Rastrear.Cli.csproj" />
+    <Project Path="Rastrear.Core/Rastrear.Core.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="../tests/Rastrear.Tests/Rastrear.Tests.csproj" />
+  </Folder>
 </Solution>
