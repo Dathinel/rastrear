@@ -1,0 +1,8 @@
+.entorno/
+dist/
+bin/
+obj/
+.claude/worktrees/
+TestResults/
+*.user
+.vs/

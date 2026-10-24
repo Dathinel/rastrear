@@ -1,0 +1,4 @@
+[submodule "externo/rodaje"]
+	path = externo/rodaje
+	url = https://github.com/Dathinel/rodaje.git
+	shallow = true
