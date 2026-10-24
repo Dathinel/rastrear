@@ -22,3 +22,7 @@ Hecha por agy (gemini-3.8-flash) en unos 15 minutos; verificada por Claude (cód
 
 - Máscara de fondo semitransparente sobre el cuadro para `quitar-fondo` (criterio 2): el módulo entrega un video, no máscaras por cuadro; hoy el resultado solo se exporta.
 - Sin probar a mano: clic/arrastre, ejecución completa de las cinco operaciones con módulos reales y cancelación en la ventana (`docs/pruebas-a-mano.md`).
+
+## Probado con el ratón (Claude, 24-oct)
+
+Con `Rastrear.App.exe` publicado y un clip sintético de 6 s (640×360, 25 fps, VP9): «Elegir video…» con ruta escrita, reproducción (cuadro 29/150 a los 2 s), clic sobre el visor → objetivo (175, 61), «Seguir» 150 cuadros en menos de 4 s con la trayectoria dibujada, «Exportar resultado…» → CSV de 150 filas (`cuadro,tiempo,x,y,confianza,estado`), «Detectar» rostros 150 cuadros en menos de 3 s con el módulo real. Sin fallos ni avisos. No probado: Cancelar (las operaciones acaban antes de poder pulsarlo), Región, Reencuadrar, Quitar fondo y Estabilizar desde la ventana.
