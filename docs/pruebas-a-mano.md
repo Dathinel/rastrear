@@ -72,3 +72,18 @@ El ejecutable se encuentra listo para usar en:
 
 1. Si intentas pulsar «Ejecutar» en «Seguir» sin haber hecho clic sobre el video, la barra `InfoBar` avisa claramente: *«Selecciona un punto con un clic o una región arrastrando sobre el video.»*
 2. Si un módulo o ejecutable no se encuentra en el equipo, el aviso indica claramente la ruta buscada en español, sin mostrar excepciones ni trazas técnicas.
+
+---
+
+## 7. Identidad (pulido visual, 24-oct)
+
+Lo que solo tú puedes juzgar a ojo. Captura de referencia: `docs/capturas/pulido-vacio.png`.
+
+1. **Primer vistazo (3 segundos):** icono de mira con trayectoria en la barra de tareas y en la ventana, «Rastrear» en Bahnschrift con el lema «Sigue lo que importa», acento verde-cian «radar». ¿Se distingue de Rodaje y de las otras dos herramientas sin leer nada?
+2. **Tema:** cambia Windows entre claro y oscuro (Configuración › Personalización › Colores) y vuelve a abrir la app: el fondo, los paneles y los textos siguen al sistema; el visor sigue oscuro en los dos. ¿Se lee todo (texto apagado, cifras en verde) en los dos temas?
+3. **Estado vacío:** sin video, el visor muestra la mira con la trayectoria punteada y dice qué hacer. ¿Invita a soltar un video o sobra?
+4. **Cifras monoespaciadas:** metadatos de la cabecera, tiempo del reproductor, objetivo (X, Y) y tiempo de progreso van en Cascadia Mono. ¿Dejan de bailar al cambiar los dígitos?
+5. **Retícula y superposición:** con un video cargado, la retícula fina (sextos) sobre el cuadro, el objetivo con cruz de mira, la trayectoria y las cajas en verde-cian, la guía de reencuadre en blanco punteado. ¿La retícula ayuda a apuntar o distrae? (Se puede quitar si molesta.)
+6. **Progreso:** al ejecutar, barra con el acento, etapa y «0:12 · quedan ~0:36» a la derecha; al acabar, un tic verde que aparece con un rebote y «Hecho en 0:04». ¿El rebote es agradable o excesivo?
+7. **Ventana:** mínimo 960×600; al cerrar recuerda tamaño, posición y si estaba maximizada (`%LOCALAPPDATA%\Dathinel\Rastrear\ventana.json`). Muévela, ciérrala y vuelve a abrirla; si desconectas un monitor, debe volver a aparecer dentro de la pantalla.
+8. **Teclado:** recorre los controles con Tab: el foco se ve (anillo del sistema) y Espacio activa botones y casillas.

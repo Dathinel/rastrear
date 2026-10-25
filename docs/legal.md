@@ -28,7 +28,7 @@ Cada modelo se descarga exclusivamente con URL fijada a un commit inmutable y co
 
 - [x] `LICENSE` con la GPLv3 completa y la cabecera de copyright y URL (`https://github.com/Dathinel/rastrear`).
 - [x] Crédito y atribución de Rodaje en `LICENCIAS.md`, `README.txt` del zip, instalador y notas de versión.
-- [ ] Atribución a Rodaje con enlace en la interfaz de `Rastrear.App` (término 1 de su licencia): la hace el worktree `pulido`; la marca quien la una.
+- [x] Atribución a Rodaje con enlace en la interfaz de `Rastrear.App` (término 1 de su licencia): «Acerca de» en la cabecera con `HyperlinkButton` al repositorio (24-oct).
 - [ ] Consulta al abogado sobre Windows App SDK y GPLv3 (compartida con Rodaje).
 - [x] Nombre e icono propios; ningún recurso visual con marca o logos de Rodaje.
 - [x] `LICENCIAS.md` al día: dependencias (SDK .NET, Windows App SDK, WebView2, FFmpeg LGPL) y modelos con licencia; versión y huella en el `paquete.json` del módulo.

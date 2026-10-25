@@ -2,13 +2,63 @@
 <Application
     x:Class="Rastrear.App.App"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-    RequestedTheme="Dark">
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <!-- Sin RequestedTheme: sigue el tema de Windows. -->
     <Application.Resources>
         <ResourceDictionary>
             <ResourceDictionary.MergedDictionaries>
                 <XamlControlsResources xmlns="using:Microsoft.UI.Xaml.Controls" />
             </ResourceDictionary.MergedDictionaries>
+
+            <!-- Acento «radar»: los controles de WinUI (AccentButtonStyle, Slider, ProgressBar, foco) lo toman de aquí. -->
+            <Color x:Key="SystemAccentColor">#19C2A0</Color>
+            <Color x:Key="SystemAccentColorLight1">#33D6B5</Color>
+            <Color x:Key="SystemAccentColorLight2">#4DE8C6</Color>
+            <Color x:Key="SystemAccentColorLight3">#7FF2D9</Color>
+            <Color x:Key="SystemAccentColorDark1">#0E7F68</Color>
+            <Color x:Key="SystemAccentColorDark2">#0A5F4E</Color>
+            <Color x:Key="SystemAccentColorDark3">#063F34</Color>
+
+            <ThemeShadow x:Key="PanelShadow" />
+            <FontFamily x:Key="TitleFont">Bahnschrift</FontFamily>
+            <FontFamily x:Key="MonoFont">Cascadia Mono, Consolas</FontFamily>
+
+            <!-- El visor es oscuro en los dos temas. -->
+            <SolidColorBrush x:Key="ViewportBrush" Color="#070A0A" />
+            <SolidColorBrush x:Key="ViewportBorderBrush" Color="#263230" />
+            <SolidColorBrush x:Key="ViewportTextBrush" Color="#C9D6D3" />
+            <SolidColorBrush x:Key="ViewportMutedBrush" Color="#7FA39B" />
+            <SolidColorBrush x:Key="ReticleBrush" Color="#2A8F7A" />
+
+            <ResourceDictionary.ThemeDictionaries>
+                <ResourceDictionary x:Key="Dark">
+                    <SolidColorBrush x:Key="WindowBrush" Color="#0E1211" />
+                    <SolidColorBrush x:Key="PanelBrush" Color="#161B1A" />
+                    <SolidColorBrush x:Key="PanelBorderBrush" Color="#263230" />
+                    <SolidColorBrush x:Key="InsetBrush" Color="#1D2524" />
+                    <SolidColorBrush x:Key="TextBrush" Color="#EAF1EF" />
+                    <SolidColorBrush x:Key="TextMutedBrush" Color="#8FA39F" />
+                    <SolidColorBrush x:Key="AccentTextBrush" Color="#4DE8C6" />
+                </ResourceDictionary>
+                <ResourceDictionary x:Key="Light">
+                    <SolidColorBrush x:Key="WindowBrush" Color="#EEF2F1" />
+                    <SolidColorBrush x:Key="PanelBrush" Color="#FFFFFF" />
+                    <SolidColorBrush x:Key="PanelBorderBrush" Color="#D5DDDB" />
+                    <SolidColorBrush x:Key="InsetBrush" Color="#F1F5F4" />
+                    <SolidColorBrush x:Key="TextBrush" Color="#141A19" />
+                    <SolidColorBrush x:Key="TextMutedBrush" Color="#5B6B68" />
+                    <SolidColorBrush x:Key="AccentTextBrush" Color="#0B7A63" />
+                </ResourceDictionary>
+                <ResourceDictionary x:Key="HighContrast">
+                    <SolidColorBrush x:Key="WindowBrush" Color="{ThemeResource SystemColorWindowColor}" />
+                    <SolidColorBrush x:Key="PanelBrush" Color="{ThemeResource SystemColorWindowColor}" />
+                    <SolidColorBrush x:Key="PanelBorderBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
+                    <SolidColorBrush x:Key="InsetBrush" Color="{ThemeResource SystemColorWindowColor}" />
+                    <SolidColorBrush x:Key="TextBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
+                    <SolidColorBrush x:Key="TextMutedBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
+                    <SolidColorBrush x:Key="AccentTextBrush" Color="{ThemeResource SystemColorHighlightColor}" />
+                </ResourceDictionary>
+            </ResourceDictionary.ThemeDictionaries>
         </ResourceDictionary>
     </Application.Resources>
 </Application>
