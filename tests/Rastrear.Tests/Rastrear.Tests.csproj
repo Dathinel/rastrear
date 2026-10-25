@@ -20,6 +20,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\Rastrear.Core\Rastrear.Core.csproj" />
     <ProjectReference Include="..\..\externo\rodaje\src\Rodaje.Analysis\Rodaje.Analysis.csproj" />
+    <ProjectReference Include="..\..\externo\rodaje\src\Rodaje.Packages\Rodaje.Packages.csproj" />
     <ProjectReference Include="..\..\externo\rodaje\src\Rodaje.Modules.Protocol\Rodaje.Modules.Protocol.csproj" />
     <ProjectReference Include="..\..\externo\rodaje\modules\Rodaje.Module.Echo\Rodaje.Module.Echo.csproj" />
     <ProjectReference Include="..\..\externo\rodaje\modules\Rodaje.Module.Vision\Rodaje.Module.Vision.csproj" />

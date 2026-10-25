@@ -1,0 +1,72 @@
+name: Release en borrador
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Versión a empaquetar (por defecto la de Directory.Build.props)'
+        required: false
+        default: ''
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+  DOTNET_NOLOGO: '1'
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: '1'
+  GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+jobs:
+  draft-release:
+    name: Crear release en borrador
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - name: Descargar código y submódulos
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Caché del SDK y FFmpeg
+        uses: actions/cache@v4
+        with:
+          path: |
+            .entorno/dotnet
+            .entorno/ffmpeg
+          key: entorno-windows-${{ hashFiles('build/preparar-entorno.ps1') }}
+
+      - name: Preparar entorno
+        shell: pwsh
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File build\preparar-entorno.ps1
+
+      - name: Ejecutar distribución
+        shell: pwsh
+        run: |
+          $verArg = if ('${{ github.event.inputs.version }}') { "-Version '${{ github.event.inputs.version }}'" } else { '' }
+          Invoke-Expression "powershell -NoProfile -ExecutionPolicy Bypass -File build\distribuir.ps1 $verArg"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Comprobar artefactos
+        shell: pwsh
+        run: |
+          $verArg = if ('${{ github.event.inputs.version }}') { "-Version '${{ github.event.inputs.version }}'" } else { '' }
+          Invoke-Expression "powershell -NoProfile -ExecutionPolicy Bypass -File build\probar-distribucion.ps1 $verArg"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Crear release en borrador en GitHub
+        shell: pwsh
+        run: |
+          $props = [xml](Get-Content -LiteralPath Directory.Build.props -Raw -Encoding UTF8)
+          $version = if ('${{ github.event.inputs.version }}') { '${{ github.event.inputs.version }}' } else { @($props.Project.PropertyGroup | ForEach-Object { $_.Version } | Where-Object { $_ })[0] }
+          $tag = "v$version"
+          $notas = "dist\notas-version.md"
+          $artefactos = @(Get-ChildItem -Path dist -File | Where-Object { $_.Name -match '^Rastrear-.*\.(zip|exe)$' -or $_.Name -in @('SHA256SUMS', 'SHA256SUMS.txt', 'catalogo-rastrear.json') } | ForEach-Object { $_.FullName })
+          
+          # gh release create SIEMPRE con --draft (nunca publica directamente)
+          & gh release create $tag --title "Rastrear $version" --notes-file $notas --draft --target $env:GITHUB_SHA @artefactos
+          if ($LASTEXITCODE -ne 0) { throw "Error al crear la release en borrador." }
