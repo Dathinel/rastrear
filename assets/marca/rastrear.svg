@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <!-- Rastrear: una mira de visor sobre la trayectoria del punto seguido. Fondo #0E1211, borde #263230, acento radar #4DE8C6. -->
+  <rect x="10" y="10" width="236" height="236" rx="54" fill="#0E1211" stroke="#263230" stroke-width="4"/>
+  <g stroke="#1E5A4E" stroke-width="2">
+    <line x1="40" y1="128" x2="216" y2="128"/>
+    <line x1="128" y1="40" x2="128" y2="216"/>
+  </g>
+  <g fill="#4DE8C6" stroke="#4DE8C6" opacity="0.55">
+    <path d="M40 200 C 84 184, 94 134, 128 128 S 178 90, 216 56" fill="none" stroke-width="10" stroke-linecap="round"/>
+    <circle cx="40" cy="200" r="10" stroke="none"/>
+    <circle cx="216" cy="56" r="10" stroke="none"/>
+  </g>
+  <circle cx="128" cy="128" r="58" fill="none" stroke="#4DE8C6" stroke-width="12"/>
+  <g stroke="#4DE8C6" stroke-width="12" stroke-linecap="round">
+    <line x1="128" y1="44" x2="128" y2="72"/>
+    <line x1="128" y1="184" x2="128" y2="212"/>
+    <line x1="44" y1="128" x2="72" y2="128"/>
+    <line x1="184" y1="128" x2="212" y2="128"/>
+  </g>
+  <circle cx="128" cy="128" r="12" fill="#4DE8C6"/>
+</svg>

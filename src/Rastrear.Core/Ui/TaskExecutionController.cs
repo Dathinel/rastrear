@@ -17,7 +17,8 @@ public sealed record UiProgressInfo(
     double Fraction,
     string StatusText,
     TimeSpan Elapsed,
-    string FormattedProgress);
+    string FormattedProgress,
+    string FormattedTime);
 
 /// <summary>
 /// Controlador de estado, cancelación rápida y formateo amigable de errores en español para tareas de análisis.
@@ -63,8 +64,23 @@ public sealed class TaskExecutionController
     {
         int pct = (int)Math.Round(CurrentFraction * 100);
         string formatted = $"{pct}% - {CurrentStatus}";
-        return new UiProgressInfo(CurrentFraction, CurrentStatus, _stopwatch.Elapsed, formatted);
+        return new UiProgressInfo(CurrentFraction, CurrentStatus, _stopwatch.Elapsed, formatted, FormatElapsedEstimate(_stopwatch.Elapsed, CurrentFraction));
     }
+
+    /// <summary>«0:12 · quedan ~0:36»; sin estimación hasta tener un 2 % hecho, porque antes el cálculo baila.</summary>
+    public static string FormatElapsedEstimate(TimeSpan elapsed, double fraction)
+    {
+        string done = FormatMinSec(elapsed);
+        if (fraction < 0.02 || fraction >= 1.0)
+        {
+            return done;
+        }
+
+        TimeSpan remaining = elapsed / fraction - elapsed;
+        return $"{done} · quedan ~{FormatMinSec(remaining)}";
+    }
+
+    public static string FormatMinSec(TimeSpan t) => $"{(int)t.TotalMinutes}:{t.Seconds:00}";
 
     public async Task<bool> CancelAsync(TimeSpan timeout = default)
     {

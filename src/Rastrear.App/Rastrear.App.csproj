@@ -7,6 +7,7 @@
     <RootNamespace>Rastrear.App</RootNamespace>
     <AssemblyName>Rastrear.App</AssemblyName>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>..\..\assets\marca\rastrear.ico</ApplicationIcon>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
@@ -38,6 +39,8 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Rastrear.Core\Rastrear.Core.csproj" />
+    <!-- La ventana y la barra de tareas (AppWindow.SetIcon) usan el .ico suelto. -->
+    <Content Include="..\..\assets\marca\rastrear.ico" Link="rastrear.ico" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup>

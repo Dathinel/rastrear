@@ -252,4 +252,42 @@ public class UiTests
         buffer.ClearCache();
         Assert.Equal(0, buffer.CachedFrameCount);
     }
+
+    [Fact]
+    public void FormatElapsedEstimate_EstimatesRemainingFromFraction()
+    {
+        Assert.Equal("0:12 · quedan ~0:36", TaskExecutionController.FormatElapsedEstimate(TimeSpan.FromSeconds(12), 0.25));
+        Assert.Equal("1:05", TaskExecutionController.FormatElapsedEstimate(TimeSpan.FromSeconds(65), 0.0));
+        Assert.Equal("0:40", TaskExecutionController.FormatElapsedEstimate(TimeSpan.FromSeconds(40), 1.0));
+    }
+
+    [Fact]
+    public void WindowPlacement_FitsIntoWorkAreaAndRoundTrips()
+    {
+        // Fuera de la pantalla por la derecha y por abajo: se mete dentro
+        WindowPlacement? fit = new WindowPlacement(1800, 1000, 1200, 800, false).FitInto(0, 0, 1920, 1080, 960, 600);
+        Assert.Equal(new WindowPlacement(720, 280, 1200, 800, false), fit);
+
+        // Más grande que el área: se recorta al área
+        fit = new WindowPlacement(-50, -50, 3000, 2000, true).FitInto(0, 0, 1920, 1080, 960, 600);
+        Assert.Equal(new WindowPlacement(0, 0, 1920, 1080, true), fit);
+
+        // Más pequeña que el mínimo: se descarta
+        Assert.Null(new WindowPlacement(0, 0, 300, 200, false).FitInto(0, 0, 1920, 1080, 960, 600));
+
+        string path = Path.Combine(Path.GetTempPath(), "rastrear-prueba-" + Guid.NewGuid().ToString("N"), "ventana.json");
+        try
+        {
+            Assert.Null(WindowPlacement.Load(path));
+            WindowPlacement original = new(10, 20, 1300, 850, true);
+            original.Save(path);
+            Assert.Equal(original, WindowPlacement.Load(path));
+            File.WriteAllText(path, "{basura");
+            Assert.Null(WindowPlacement.Load(path));
+        }
+        finally
+        {
+            Directory.Delete(Path.GetDirectoryName(path)!, recursive: true);
+        }
+    }
 }

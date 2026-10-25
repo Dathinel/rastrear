@@ -7,6 +7,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Windows.ApplicationModel.DataTransfer;
 using Windows.Storage;
+using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
@@ -20,6 +21,10 @@ using Rastrear.Core.Tracking;
 using Rastrear.Core.Ui;
 using Rastrear.Core.Video;
 using Rastrear.Core.Vision;
+using Windows.Graphics;
+using Windows.UI;
+using WinRT;
+using static TerraFX.Interop.Windows.Windows;
 
 namespace Rastrear.App;
 
@@ -52,11 +57,30 @@ public sealed partial class MainWindow : Window
     // Controlador de tareas y cancelación rápida
     private readonly TaskExecutionController _taskController = new();
 
+    // Ventana: mínimo en DIP y últimos límites sin maximizar (lo que se guarda en ventana.json)
+    private const int MinWidthDip = 960;
+    private const int MinHeightDip = 600;
+    private RectInt32 _restoredBounds;
+    private bool _maximized;
+
+    // Paleta «radar» de la superposición
+    private static readonly SolidColorBrush AccentBrush = new(Color.FromArgb(255, 0x4D, 0xE8, 0xC6));
+    private static readonly SolidColorBrush TrailBrush = new(Color.FromArgb(190, 0x4D, 0xE8, 0xC6));
+    private static readonly SolidColorBrush ReticleBrush = new(Color.FromArgb(56, 0x4D, 0xE8, 0xC6));
+    private static readonly SolidColorBrush MarkerFillBrush = new(Color.FromArgb(255, 0xEA, 0xF1, 0xEF));
+    private static readonly SolidColorBrush BadgeBrush = new(Color.FromArgb(220, 0x0E, 0x12, 0x11));
+    private static readonly SolidColorBrush GuideBrush = new(Color.FromArgb(210, 0xEA, 0xF1, 0xEF));
+
     public MainWindow()
     {
         InitializeComponent();
         _hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
         Title = "Rastrear";
+        AppWindow.SetIcon(System.IO.Path.Combine(AppContext.BaseDirectory, "rastrear.ico"));
+        AppWindow.TitleBar.PreferredTheme = TitleBarTheme.UseDefaultAppMode;
+        RestorePlacement();
+        AppWindow.Changed += OnAppWindowChanged;
+        Closed += (_, _) => SavePlacement();
 
         _playbackTimer.Tick += OnPlaybackTick;
 
@@ -77,6 +101,78 @@ public sealed partial class MainWindow : Window
         }
         catch { }
     }
+
+    #region Tamaño y posición de la ventana
+
+    private double DpiScale => GetDpiForWindow((TerraFX.Interop.Windows.HWND)_hwnd) / 96.0;
+
+    // Con Native AOT, «Presenter is OverlappedPresenter» no acierta (el RCW no sale con el tipo derivado): se pregunta por QueryInterface.
+    private OverlappedPresenter? Overlapped =>
+        AppWindow.Presenter is { Kind: AppWindowPresenterKind.Overlapped } p ? p.As<OverlappedPresenter>() : null;
+
+    private void RestorePlacement()
+    {
+        double scale = DpiScale;
+        int minW = (int)(MinWidthDip * scale);
+        int minH = (int)(MinHeightDip * scale);
+        if (Overlapped is { } presenter)
+        {
+            presenter.PreferredMinimumWidth = minW;
+            presenter.PreferredMinimumHeight = minH;
+        }
+
+        WindowPlacement? saved = WindowPlacement.Load(WindowPlacement.DefaultPath);
+        RectInt32 wanted = saved is null
+            ? new RectInt32(AppWindow.Position.X, AppWindow.Position.Y, AppWindow.Size.Width, AppWindow.Size.Height)
+            : new RectInt32(saved.X, saved.Y, saved.Width, saved.Height);
+        RectInt32 area = DisplayArea.GetFromRect(wanted, DisplayAreaFallback.Nearest).WorkArea;
+        WindowPlacement? fit = saved?.FitInto(area.X, area.Y, area.Width, area.Height, minW, minH);
+        if (fit is null)
+        {
+            AppWindow.Resize(new SizeInt32((int)(1280 * scale), (int)(800 * scale)));
+            return;
+        }
+
+        AppWindow.MoveAndResize(new RectInt32(fit.X, fit.Y, fit.Width, fit.Height));
+        if (fit.Maximized && Overlapped is { } p)
+        {
+            p.Maximize();
+        }
+    }
+
+    private void OnAppWindowChanged(AppWindow sender, AppWindowChangedEventArgs args)
+    {
+        if (Overlapped is not { } presenter)
+        {
+            return;
+        }
+
+        _maximized = presenter.State == OverlappedPresenterState.Maximized;
+        if (presenter.State == OverlappedPresenterState.Restored)
+        {
+            _restoredBounds = new RectInt32(sender.Position.X, sender.Position.Y, sender.Size.Width, sender.Size.Height);
+        }
+    }
+
+    private void SavePlacement()
+    {
+        // Se guarda lo visto en Changed: al cerrar, AppWindow ya puede no responder.
+        if (_restoredBounds.Width <= 0)
+        {
+            return;
+        }
+
+        try
+        {
+            new WindowPlacement(_restoredBounds.X, _restoredBounds.Y, _restoredBounds.Width, _restoredBounds.Height, _maximized).Save(WindowPlacement.DefaultPath);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // Sin permiso o disco lleno: se abre con el tamaño por defecto la próxima vez.
+        }
+    }
+
+    #endregion
 
     private void ShowNotification(string message, InfoBarSeverity severity = InfoBarSeverity.Error)
     {
@@ -348,6 +444,16 @@ public sealed partial class MainWindow : Window
 
         int curFrame = _timeModel.CurrentFrame;
 
+        // 0. Retícula fina sobre el cuadro (sextos), solo aspecto
+        UiRect content = _transformer.VideoContentRect;
+        for (int i = 1; i < 6; i++)
+        {
+            double x = content.X + content.Width * i / 6;
+            double y = content.Y + content.Height * i / 6;
+            OverlayCanvas.Children.Add(new Line { X1 = x, Y1 = content.Y, X2 = x, Y2 = content.Bottom, Stroke = ReticleBrush, StrokeThickness = 1 });
+            OverlayCanvas.Children.Add(new Line { X1 = content.X, Y1 = y, X2 = content.Right, Y2 = y, Stroke = ReticleBrush, StrokeThickness = 1 });
+        }
+
         // 1. Dibujar objetivo seleccionado para Seguir
         if (TaskSelector.SelectedIndex == 0)
         {
@@ -359,12 +465,17 @@ public sealed partial class MainWindow : Window
                 {
                     Width = 18,
                     Height = 18,
-                    Stroke = new SolidColorBrush(Windows.UI.Color.FromArgb(255, 0, 229, 255)),
+                    Stroke = AccentBrush,
                     StrokeThickness = 2,
                 };
                 Canvas.SetLeft(circle, px - 9);
                 Canvas.SetTop(circle, py - 9);
                 OverlayCanvas.Children.Add(circle);
+                // Cruz de mira alrededor del círculo
+                OverlayCanvas.Children.Add(new Line { X1 = px - 16, Y1 = py, X2 = px - 10, Y2 = py, Stroke = AccentBrush, StrokeThickness = 2 });
+                OverlayCanvas.Children.Add(new Line { X1 = px + 10, Y1 = py, X2 = px + 16, Y2 = py, Stroke = AccentBrush, StrokeThickness = 2 });
+                OverlayCanvas.Children.Add(new Line { X1 = px, Y1 = py - 16, X2 = px, Y2 = py - 10, Stroke = AccentBrush, StrokeThickness = 2 });
+                OverlayCanvas.Children.Add(new Line { X1 = px, Y1 = py + 10, X2 = px, Y2 = py + 16, Stroke = AccentBrush, StrokeThickness = 2 });
             }
             else if (_selectedRegion is { } r)
             {
@@ -373,7 +484,7 @@ public sealed partial class MainWindow : Window
                 {
                     Width = Math.Max(2, rect.Width),
                     Height = Math.Max(2, rect.Height),
-                    Stroke = new SolidColorBrush(Windows.UI.Color.FromArgb(255, 0, 229, 255)),
+                    Stroke = AccentBrush,
                     StrokeThickness = 2,
                     StrokeDashArray = [4, 2],
                 };
@@ -393,7 +504,7 @@ public sealed partial class MainWindow : Window
                     Polyline polyline = new()
                     {
                         Points = points,
-                        Stroke = new SolidColorBrush(Windows.UI.Color.FromArgb(220, 255, 214, 0)),
+                        Stroke = TrailBrush,
                         StrokeThickness = 2,
                     };
                     OverlayCanvas.Children.Add(polyline);
@@ -405,8 +516,8 @@ public sealed partial class MainWindow : Window
                     {
                         Width = 14,
                         Height = 14,
-                        Fill = new SolidColorBrush(Windows.UI.Color.FromArgb(255, 255, 82, 82)),
-                        Stroke = new SolidColorBrush(Windows.UI.Color.FromArgb(255, 255, 255, 255)),
+                        Fill = MarkerFillBrush,
+                        Stroke = AccentBrush,
                         StrokeThickness = 2,
                     };
                     Canvas.SetLeft(curMarker, cp.X - 7);
@@ -425,7 +536,7 @@ public sealed partial class MainWindow : Window
                 {
                     Width = Math.Max(2, b.Rect.Width),
                     Height = Math.Max(2, b.Rect.Height),
-                    Stroke = new SolidColorBrush(Windows.UI.Color.FromArgb(255, 0, 230, 118)),
+                    Stroke = AccentBrush,
                     StrokeThickness = 2,
                 };
                 Canvas.SetLeft(box, b.Rect.X);
@@ -436,11 +547,12 @@ public sealed partial class MainWindow : Window
                 {
                     Text = b.Label,
                     FontSize = 11,
-                    Foreground = new SolidColorBrush(Windows.UI.Color.FromArgb(255, 255, 255, 255)),
+                    FontFamily = (FontFamily)Application.Current.Resources["MonoFont"],
+                    Foreground = AccentBrush,
                 };
                 Border badge = new()
                 {
-                    Background = new SolidColorBrush(Windows.UI.Color.FromArgb(200, 0, 150, 70)),
+                    Background = BadgeBrush,
                     Padding = new Thickness(4, 2, 4, 2),
                     CornerRadius = new CornerRadius(3),
                     Child = label,
@@ -462,7 +574,7 @@ public sealed partial class MainWindow : Window
             {
                 Width = Math.Max(2, cropView.Width),
                 Height = Math.Max(2, cropView.Height),
-                Stroke = new SolidColorBrush(Windows.UI.Color.FromArgb(255, 255, 171, 0)),
+                Stroke = GuideBrush,
                 StrokeThickness = 2,
                 StrokeDashArray = [6, 3],
             };
@@ -527,8 +639,10 @@ public sealed partial class MainWindow : Window
         Progress<VideoProgress> progress = new(p =>
         {
             _taskController.ReportProgress(p.Fraction, p.Stage);
-            TaskProgressBar.Value = p.Fraction * 100.0;
-            TaskProgressText.Text = $"{p.Fraction * 100:0}% - {p.Stage}";
+            UiProgressInfo info = _taskController.GetProgressInfo();
+            TaskProgressBar.Value = info.Fraction * 100.0;
+            TaskProgressText.Text = $"{info.Fraction * 100:0} % · {info.StatusText}";
+            TaskTimeText.Text = info.FormattedTime;
         });
 
         try
@@ -651,7 +765,15 @@ public sealed partial class MainWindow : Window
         BtnElegirVideo.IsEnabled = !running;
 
         TaskProgressBar.Visibility = running ? Visibility.Visible : Visibility.Collapsed;
-        TaskProgressText.Visibility = running ? Visibility.Visible : Visibility.Collapsed;
+        TaskTimeText.Visibility = running ? Visibility.Visible : Visibility.Collapsed;
+        bool done = !running && _taskController.State == ExecutionState.Completed;
+        TaskProgressText.Visibility = running || done ? Visibility.Visible : Visibility.Collapsed;
+        DoneMark.Visibility = done ? Visibility.Visible : Visibility.Collapsed;
+        if (done)
+        {
+            TaskProgressText.Text = $"Hecho en {TaskExecutionController.FormatMinSec(_taskController.GetProgressInfo().Elapsed)}";
+            DoneStoryboard.Begin();
+        }
     }
 
     #endregion

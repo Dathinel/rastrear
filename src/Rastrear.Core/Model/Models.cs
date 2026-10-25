@@ -118,6 +118,7 @@ public sealed record EchoDieParameters(
 [JsonSerializable(typeof(FfprobeOutput))]
 [JsonSerializable(typeof(EchoCountParameters))]
 [JsonSerializable(typeof(EchoDieParameters))]
+[JsonSerializable(typeof(Rastrear.Core.Ui.WindowPlacement))]
 internal partial class RastrearJsonContext : JsonSerializerContext
 {
 }
