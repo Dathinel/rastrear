@@ -142,7 +142,7 @@ Requisitos:
   - Windows 10 (19041+) o Windows 11 de 64 bits (x64).
   - FFmpeg (LGPL) en el PATH o en la carpeta del entorno.
   - Para quitar fondo, deteccion y reencuadre: Rodaje.Module.Vision (modulo-vision)
-    con sus modelos correspondientes, disponible a traves del catalogo de Rodaje.
+    con sus modelos: lo instala el Lanzador (Dathinel\Comun\modulos) o Rodaje; tambien vale RASTREAR_MODULOS o modulos\ junto al exe.
 
 Licencia:
   GNU General Public License v3 (GPL-3.0-only).

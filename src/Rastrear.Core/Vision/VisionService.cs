@@ -11,7 +11,21 @@ namespace Rastrear.Core.Vision;
 [SupportedOSPlatform("windows")]
 public static class VisionService
 {
-    public static string FindModule(string? customPath = null)
+    public const string ModuleExe = "Rodaje.Module.Vision.exe";
+    public const string ModuleId = "modulo-vision";
+
+    public static string FindModule(string? customPath = null) => FindModule(
+        customPath,
+        Environment.GetEnvironmentVariable,
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+        AppContext.BaseDirectory);
+
+    /// <summary>
+    /// Orden: <c>RASTREAR_MODULOS</c>; lo instalado por el Lanzador (<c>Dathinel\Comun\modulos\modulo-vision\&lt;última versión&gt;</c>);
+    /// los módulos de Rodaje (<c>Rodaje\complementos\modulos\*</c> y <c>RODAJE_MODULOS</c>); <c>modulos\</c> junto al exe; el repositorio en desarrollo.
+    /// Cada raíz se prueba con el exe directo y en sus subcarpetas, la de versión más alta primero.
+    /// </summary>
+    public static string FindModule(string? customPath, Func<string, string?> env, string localAppData, string baseDirectory)
     {
         if (!string.IsNullOrWhiteSpace(customPath))
         {
@@ -21,7 +35,7 @@ public static class VisionService
             }
             if (Directory.Exists(customPath))
             {
-                string inDir = Path.Combine(customPath, "Rodaje.Module.Vision.exe");
+                string inDir = Path.Combine(customPath, ModuleExe);
                 if (File.Exists(inDir))
                 {
                     return Path.GetFullPath(inDir);
@@ -30,39 +44,36 @@ public static class VisionService
             throw new RastrearUserException($"No se encontró el módulo de visión en: {customPath}");
         }
 
-        // RASTREAR_MODULOS
-        if (Environment.GetEnvironmentVariable("RASTREAR_MODULOS") is { Length: > 0 } envRast)
-        {
-            if (File.Exists(envRast)) return Path.GetFullPath(envRast);
-            string inDir = Path.Combine(envRast, "Rodaje.Module.Vision.exe");
-            if (File.Exists(inDir)) return Path.GetFullPath(inDir);
-        }
-
-        // RODAJE_MODULO_VISION
-        if (Environment.GetEnvironmentVariable("RODAJE_MODULO_VISION") is { Length: > 0 } envMod && File.Exists(envMod))
-        {
-            return Path.GetFullPath(envMod);
-        }
-
-        // Junto a la aplicación
-        string[] localCandidates =
+        string?[] roots =
         [
-            Path.Combine(AppContext.BaseDirectory, "Rodaje.Module.Vision.exe"),
-            Path.Combine(AppContext.BaseDirectory, "modulos", "Rodaje.Module.Vision.exe"),
-            Path.Combine(AppContext.BaseDirectory, "modulos", "vision", "Rodaje.Module.Vision.exe"),
+            env("RASTREAR_MODULOS"),
+            Path.Combine(localAppData, "Dathinel", "Comun", "modulos", ModuleId),
+            Path.Combine(localAppData, "Rodaje", "complementos", "modulos"),
+            env("RODAJE_MODULOS"),
+            Path.Combine(baseDirectory, "modulos"),
         ];
-        foreach (string c in localCandidates)
+        var tried = new List<string>();
+        foreach (string? root in roots)
         {
-            if (File.Exists(c)) return Path.GetFullPath(c);
+            if (string.IsNullOrWhiteSpace(root)) continue;
+            if (File.Exists(root)) return Path.GetFullPath(root);
+            tried.Add(Path.Combine(root, ModuleExe));
+            tried.Add(Path.Combine(root, "*", ModuleExe));
+            if (!Directory.Exists(root)) continue;
+            string direct = Path.Combine(root, ModuleExe);
+            if (File.Exists(direct)) return Path.GetFullPath(direct);
+            IEnumerable<string> subdirs = Directory.GetDirectories(root)
+                .OrderByDescending(d => Version.TryParse(Path.GetFileName(d), out Version? v) ? v : new Version(0, 0))
+                .ThenByDescending(d => d, StringComparer.OrdinalIgnoreCase);
+            foreach (string sub in subdirs)
+            {
+                string c = Path.Combine(sub, ModuleExe);
+                if (File.Exists(c)) return Path.GetFullPath(c);
+            }
         }
-
-        // En LocalAppData de Rodaje
-        string localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-        string appDataCandidate = Path.Combine(localAppData, "Rodaje", "complementos", "modulos", "vision", "Rodaje.Module.Vision.exe");
-        if (File.Exists(appDataCandidate)) return Path.GetFullPath(appDataCandidate);
 
         // En el repositorio (desarrollo / pruebas)
-        for (DirectoryInfo? dir = new(AppContext.BaseDirectory); dir is not null; dir = dir.Parent)
+        for (DirectoryInfo? dir = new(baseDirectory); dir is not null; dir = dir.Parent)
         {
             string[] repoCandidates =
             [
@@ -79,7 +90,8 @@ public static class VisionService
         }
 
         throw new RastrearUserException(
-            "No se encontró el módulo de visión (Rodaje.Module.Vision.exe). Pasa --modulo <ruta> o define la variable RASTREAR_MODULOS o RODAJE_MODULO_VISION.");
+            "No se encontró el módulo de visión (Rodaje.Module.Vision.exe). Rutas probadas:\n  " + string.Join("\n  ", tried) +
+            "\nInstala «modulo-vision» con el Lanzador, pasa --modulo <ruta> o define la variable RASTREAR_MODULOS.");
     }
 
     private static void EnsureDotnetEnvironment()

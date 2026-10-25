@@ -17,4 +17,6 @@
   - Exportación de resultados a formatos de datos y video.
 - **Rastrear.Cli**: herramienta de línea de comandos para automatización y scripts (`seguir`, `quitar-fondo`, `detectar`, `reencuadrar`, `estabilizar`).
 - **Rastrear.Core**: núcleo de procesamiento sin dependencias de UI, conectividad por tubería con nombre (`Rodaje.Modules.Protocol`) al módulo de visión (`Rodaje.Module.Vision`) y análisis nativo de Rodaje (`Rodaje.Analysis`).
-- **Distribución**: paquete zip autocontenido AOT win-x64, entrada de catálogo firmado de Rodaje (`catalogo-rastrear.json`) e instalador Inno Setup por usuario.
+- **Identidad «radar»**: acento verde-cian que sigue al tema de Windows, Bahnschrift en títulos y Cascadia Mono en cifras, icono propio, retícula en el visor, progreso con tiempo restante y tic de «hecho»; la ventana recuerda tamaño y posición.
+- **Búsqueda del módulo de visión** en orden: `RASTREAR_MODULOS`, lo instalado por el Lanzador (`%LOCALAPPDATA%\Dathinel\Comun\modulos\modulo-vision\<última versión>`), los módulos de Rodaje (`%LOCALAPPDATA%\Rodaje\complementos\modulos` y `RODAJE_MODULOS`) y `modulos\` junto al exe; si falta, el error lista las rutas probadas.
+- **Distribución**: paquete zip autocontenido AOT win-x64 (26,5 MB), entrada de catálogo firmado de Rodaje (`catalogo-rastrear.json`), instalador Inno Setup por usuario (16,9 MB) y `SHA256SUMS`; 23 pruebas xUnit.
