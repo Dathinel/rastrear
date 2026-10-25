@@ -83,12 +83,19 @@ public sealed partial class MainWindow : Window
         Closed += (_, _) => SavePlacement();
 
         _playbackTimer.Tick += OnPlaybackTick;
+        AboutVersionText.Text = "Versión " + (typeof(MainWindow).Assembly.GetName().Version?.ToString(3) ?? "desconocida");
 
         // Medición de arranque en frío
         if (Program.MeasureStartup)
         {
             RecordStartup();
         }
+    }
+
+    private async void OnAcercaDeClick(object sender, RoutedEventArgs e)
+    {
+        AboutDialog.XamlRoot = Content.XamlRoot;
+        await AboutDialog.ShowAsync();
     }
 
     private void RecordStartup()

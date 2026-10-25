@@ -1,0 +1,12 @@
+<Project>
+  <PropertyGroup>
+    <Authors>Dathinel</Authors>
+    <Product>Rastrear</Product>
+    <!-- Versión única: el exe y «Acerca de» la leen de aquí -->
+    <Version>0.3.0</Version>
+    <FileVersion>$(Version).0</FileVersion>
+    <Copyright>Copyright (C) 2026 Dathinel</Copyright>
+    <PackageLicenseExpression>GPL-3.0-only</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/Dathinel/rastrear</PackageProjectUrl>
+  </PropertyGroup>
+</Project>

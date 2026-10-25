@@ -36,8 +36,23 @@
             <TextBlock x:Name="VideoMetaText" Grid.Column="1" HorizontalAlignment="Center" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
                        FontFamily="{StaticResource MonoFont}" FontSize="13" Foreground="{ThemeResource TextMutedBrush}" Text="Ningún video cargado" />
 
-            <Button x:Name="BtnElegirVideo" Grid.Column="2" Content="Elegir video…" Click="OnElegirVideoClick" />
+            <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center" Spacing="12">
+                <HyperlinkButton Content="Acerca de" Padding="4,2" FontSize="12" Foreground="{ThemeResource TextMutedBrush}" Click="OnAcercaDeClick" />
+                <Button x:Name="BtnElegirVideo" Content="Elegir video…" Click="OnElegirVideoClick" />
+            </StackPanel>
         </Grid>
+
+        <!-- Acerca de: nombre, versión, licencia y el crédito a Rodaje que exige su licencia (término 1 de la sección 7) -->
+        <ContentDialog x:Name="AboutDialog" CloseButtonText="Cerrar" DefaultButton="Close">
+            <StackPanel Spacing="8" MaxWidth="420">
+                <TextBlock Text="Rastrear" FontFamily="{StaticResource TitleFont}" FontSize="22" FontWeight="SemiBold" />
+                <TextBlock x:Name="AboutVersionText" FontFamily="{StaticResource MonoFont}" FontSize="13" Foreground="{ThemeResource TextMutedBrush}" />
+                <TextBlock Text="Copyright (C) 2026 Dathinel. Software libre bajo la licencia GPLv3 (GPL-3.0-only); el texto completo va en LICENSE junto al programa." TextWrapping="Wrap" />
+                <HyperlinkButton NavigateUri="https://github.com/Dathinel/rodaje" Padding="0,2">
+                    <TextBlock Text="Basado en el editor de video de código abierto de Dathinel / Rodaje (https://github.com/Dathinel/rodaje)" TextWrapping="Wrap" />
+                </HyperlinkButton>
+            </StackPanel>
+        </ContentDialog>
 
         <!-- Barra de avisos / errores -->
         <InfoBar x:Name="NotificationBar" Grid.Row="1" IsOpen="False" IsClosable="True" Margin="24,0,24,8" />

@@ -13,7 +13,7 @@ GPL-3.0-only, con el texto oficial completo en [LICENSE](../LICENSE). La razón:
 ## Lista de comprobación antes de publicar
 
 - [ ] `LICENSE` con la GPLv3 completa y la cabecera de copyright y URL.
-- [ ] Crédito de Rodaje en «Acerca de», o decisión registrada de no ponerlo.
+- [x] Crédito de Rodaje en «Acerca de» (enlace discreto en la cabecera; `HyperlinkButton` al repositorio con el texto literal del término 1), junto a nombre, versión y licencia.
 - [ ] Nombre e icono propios; nada de recursos con la marca Rodaje.
 - [ ] `LICENCIAS.md` al día: cada dependencia, módulo y modelo con versión, licencia y huella.
 - [ ] Modelos: su licencia permite redistribución y uso comercial; se descargan con URL fijada a un commit y SHA-256, no van en el repositorio.
