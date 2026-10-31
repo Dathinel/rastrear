@@ -5,6 +5,7 @@
 ### Añadido
 - La ventana recuerda la última carpeta (los diálogos de abrir y guardar se abren en ella), la última herramienta y los parámetros de cada una, en `%LOCALAPPDATA%\Dathinel\Rastrear\preferencias.json`.
 - Se puede soltar un video en cualquier parte de la ventana, y varios a la vez: quedan en cola y «Ejecutar» aplica la herramienta a todos, uno tras otro, con progreso por archivo y global; el resultado de cada uno se escribe junto al video de entrada (`clip-fondo.webm`, `clip-seguimiento.csv`…) sin pisar archivos. «Cancelar» mata además los procesos de ffmpeg y el módulo de visión que sigan vivos (`ChildProcessRegistry`) y avisa si alguno no salió.
+- Botón «Después» en el reproductor: vista previa del primer cuadro con los parámetros actuales, que se rehace al cambiarlos; para «Reencuadrar» el recorte centrado, para «Quitar fondo» la máscara de ese cuadro pedida al módulo, sobre un tablero de ajedrez o en grises (`FramePreview`, `VisionService.MatteFrameAsync`). Las demás herramientas lo dicen: dependen del video entero.
 
 ## [1.0.0] - 2026-10-24
 

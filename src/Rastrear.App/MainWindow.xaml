@@ -93,6 +93,9 @@
                         <!-- Imagen del cuadro de video -->
                         <Image x:Name="VideoDisplay" Stretch="Uniform" HorizontalAlignment="Center" VerticalAlignment="Center" />
 
+                        <!-- «Después»: el primer cuadro con la herramienta aplicada (recorte del reencuadre, fondo quitado) -->
+                        <Image x:Name="PreviewDisplay" Stretch="Uniform" HorizontalAlignment="Center" VerticalAlignment="Center" Visibility="Collapsed" />
+
                         <!-- Lienzo de superposición transparente encima de la imagen -->
                         <Canvas x:Name="OverlayCanvas" Background="Transparent"
                                 PointerPressed="OnOverlayPointerPressed"
@@ -124,8 +127,14 @@
                                 <Button x:Name="BtnStepForward" Content="⏭" Click="OnStepForwardClick" ToolTipService.ToolTip="Cuadro siguiente" />
                             </StackPanel>
 
-                            <TextBlock x:Name="TimeText" Grid.Column="1" HorizontalAlignment="Right" VerticalAlignment="Center"
-                                       FontFamily="{StaticResource MonoFont}" FontSize="13" Foreground="{ThemeResource TextMutedBrush}" Text="00:00.00 / 00:00.00 (cuadro 0/0)" />
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="12">
+                                <TextBlock x:Name="PreviewStatusText" VerticalAlignment="Center" FontSize="12" Foreground="{ThemeResource TextMutedBrush}" TextTrimming="CharacterEllipsis" MaxWidth="320" />
+                                <ToggleButton x:Name="BtnVistaPrevia" Content="Después" FontSize="12" Padding="10,4" IsEnabled="False"
+                                              ToolTipService.ToolTip="Vista previa del primer cuadro con los parámetros actuales (antes ↔ después)"
+                                              Checked="OnVistaPreviaToggled" Unchecked="OnVistaPreviaToggled" />
+                                <TextBlock x:Name="TimeText" VerticalAlignment="Center"
+                                           FontFamily="{StaticResource MonoFont}" FontSize="13" Foreground="{ThemeResource TextMutedBrush}" Text="00:00.00 / 00:00.00 (cuadro 0/0)" />
+                            </StackPanel>
                         </Grid>
                     </Grid>
                 </Border>
@@ -178,12 +187,12 @@
 
                         <StackPanel x:Name="PanelQuitarFondo" Spacing="8" Visibility="Collapsed">
                             <ToggleSwitch x:Name="SwitchFondoModo" Header="Modo de salida"
-                                          OffContent="Video con alfa (WebM/ProRes)" OnContent="Máscara en grises (MP4)" />
-                            <ComboBox x:Name="ComboCalidadFondo" Header="Calidad" HorizontalAlignment="Stretch">
+                                          OffContent="Video con alfa (WebM/ProRes)" OnContent="Máscara en grises (MP4)" Toggled="OnFondoModoToggled" />
+                            <ComboBox x:Name="ComboCalidadFondo" Header="Calidad" HorizontalAlignment="Stretch" SelectionChanged="OnFondoParamChanged">
                                 <ComboBoxItem Content="Normal (MODNet)" IsSelected="True" />
                                 <ComboBoxItem Content="Alta (BiRefNet lite)" />
                             </ComboBox>
-                            <ComboBox x:Name="ComboDeviceFondo" Header="Dispositivo" HorizontalAlignment="Stretch">
+                            <ComboBox x:Name="ComboDeviceFondo" Header="Dispositivo" HorizontalAlignment="Stretch" SelectionChanged="OnFondoParamChanged">
                                 <ComboBoxItem Content="Automático" IsSelected="True" />
                                 <ComboBoxItem Content="GPU (DirectML)" />
                                 <ComboBoxItem Content="CPU" />

@@ -65,6 +65,11 @@ public sealed partial class MainWindow : Window
     // Cola de videos soltados: se procesan uno tras otro con la misma herramienta
     private readonly BatchQueue _queue = new();
 
+    // Vista previa «después» del primer cuadro
+    private WriteableBitmap? _previewBitmap;
+    private CancellationTokenSource? _previewCts;
+    private bool PreviewOn => BtnVistaPrevia.IsChecked == true;
+
     // Ventana: mínimo en DIP y últimos límites sin maximizar (lo que se guarda en ventana.json)
     private const int MinWidthDip = 960;
     private const int MinHeightDip = 600;
@@ -353,6 +358,8 @@ public sealed partial class MainWindow : Window
             _selectedRegion = null;
             SeguirTargetLabel.Text = "Objetivo: Sin seleccionar";
             BtnExportar.IsEnabled = false;
+            BtnVistaPrevia.IsEnabled = true;
+            if (PreviewOn) BtnVistaPrevia.IsChecked = false;
 
             // Precargar y mostrar primer cuadro
             await _frameBuffer.PreloadRangeAsync(0, Math.Min(30, info.EstimatedFrames));
@@ -701,6 +708,7 @@ public sealed partial class MainWindow : Window
         PanelEstabilizar.Visibility = idx == 4 ? Visibility.Visible : Visibility.Collapsed;
 
         UpdateOverlay();
+        _ = RefreshPreviewAsync();
     }
 
     private void OnSeguirModeChanged(object sender, RoutedEventArgs e)
@@ -714,7 +722,107 @@ public sealed partial class MainWindow : Window
     private void OnAspectChanged(object sender, RoutedEventArgs e)
     {
         UpdateOverlay();
+        _ = RefreshPreviewAsync();
     }
+
+    private void OnFondoModoToggled(object sender, RoutedEventArgs e) => _ = RefreshPreviewAsync();
+
+    private void OnFondoParamChanged(object sender, SelectionChangedEventArgs e) => _ = RefreshPreviewAsync();
+
+    #region Vista previa antes/después
+
+    private async void OnVistaPreviaToggled(object sender, RoutedEventArgs e)
+    {
+        if (PreviewOn && _timeModel is not null)
+        {
+            Pause();
+            await ShowFrameAsync(0);
+        }
+        await RefreshPreviewAsync();
+    }
+
+    /// <summary>
+    /// Con «Después» pulsado, muestra el primer cuadro con la herramienta aplicada (<see cref="FramePreview"/>): el recorte
+    /// del reencuadre al instante; el fondo quitado pidiendo la máscara de ese cuadro al módulo, con la petición anterior cancelada.
+    /// </summary>
+    private async Task RefreshPreviewAsync()
+    {
+        if (BtnVistaPrevia is null || PreviewStatusText is null || TaskSelector is null) return;
+
+        _previewCts?.Cancel();
+        _previewCts = null;
+
+        int taskIdx = TaskSelector.SelectedIndex;
+        bool show = PreviewOn && _frameBuffer is not null && _videoInfo is not null;
+        if (!show || !FramePreview.SupportsPreview(taskIdx))
+        {
+            PreviewStatusText.Text = show ? FramePreview.NotSupportedText : string.Empty;
+            SetPreviewVisible(false);
+            return;
+        }
+
+        byte[]? frame = await _frameBuffer!.GetFrameAsync(0);
+        if (frame is null || !PreviewOn)
+        {
+            SetPreviewVisible(false);
+            return;
+        }
+
+        int w = _videoInfo!.Width;
+        int h = _videoInfo.Height;
+        if (taskIdx == 3)
+        {
+            RenderPreview(FramePreview.CropForAspect(frame, w, h, CurrentAspectPreset()));
+            PreviewStatusText.Text = $"Después: reencuadre {CurrentAspectPreset()} centrado";
+            SetPreviewVisible(true);
+            return;
+        }
+
+        CancellationTokenSource cts = new();
+        _previewCts = cts;
+        PreviewStatusText.Text = "Calculando la vista previa del fondo…";
+        try
+        {
+            byte[] mask = await VisionService.MatteFrameAsync(
+                frame, w, h,
+                quality: ComboCalidadFondo.SelectedIndex == 1 ? "alta" : "normal",
+                device: DeviceName(ComboDeviceFondo.SelectedIndex),
+                cancellationToken: cts.Token);
+            if (cts.IsCancellationRequested || !PreviewOn) return;
+            RenderPreview(FramePreview.ApplyMask(frame, mask, w, h, asMask: SwitchFondoModo.IsOn));
+            PreviewStatusText.Text = SwitchFondoModo.IsOn ? "Después: máscara en grises" : "Después: fondo quitado";
+            SetPreviewVisible(true);
+        }
+        catch (OperationCanceledException)
+        {
+            // Cambió otro parámetro antes de acabar: la petición nueva manda.
+        }
+        catch (Exception ex)
+        {
+            PreviewStatusText.Text = TaskExecutionController.FormatErrorMessage(ex);
+            SetPreviewVisible(false);
+        }
+    }
+
+    private void SetPreviewVisible(bool visible)
+    {
+        PreviewDisplay.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
+        VideoDisplay.Visibility = visible || _videoInfo is null ? Visibility.Collapsed : Visibility.Visible;
+        OverlayCanvas.Visibility = visible ? Visibility.Collapsed : Visibility.Visible;
+    }
+
+    private void RenderPreview(PreviewFrame preview)
+    {
+        if (_previewBitmap is null || _previewBitmap.PixelWidth != preview.Width || _previewBitmap.PixelHeight != preview.Height)
+        {
+            _previewBitmap = new WriteableBitmap(preview.Width, preview.Height);
+            PreviewDisplay.Source = _previewBitmap;
+        }
+        preview.Bgra.CopyTo(_previewBitmap.PixelBuffer);
+        _previewBitmap.Invalidate();
+    }
+
+    #endregion
 
     private async void OnEjecutarClick(object sender, RoutedEventArgs e)
     {
@@ -949,6 +1057,8 @@ public sealed partial class MainWindow : Window
         TaskSelector.IsEnabled = !running;
         BtnElegirVideo.IsEnabled = !running;
         BtnVaciarCola.IsEnabled = !running;
+        BtnVistaPrevia.IsEnabled = !running && _videoInfo is not null;
+        if (running && PreviewOn) BtnVistaPrevia.IsChecked = false;
 
         TaskProgressBar.Visibility = running ? Visibility.Visible : Visibility.Collapsed;
         TaskTimeText.Visibility = running ? Visibility.Visible : Visibility.Collapsed;
