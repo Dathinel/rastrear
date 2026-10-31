@@ -278,6 +278,18 @@
                         </StackPanel>
 
                         <Button x:Name="BtnExportar" Content="Exportar resultado…" HorizontalAlignment="Stretch" IsEnabled="False" Click="OnExportarClick" />
+
+                        <!-- El archivo resultante: abrir su carpeta (seleccionado en el Explorador) y copiar la ruta -->
+                        <Grid ColumnSpacing="8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Button x:Name="BtnAbrirCarpeta" Content="Abrir carpeta" HorizontalAlignment="Stretch" IsEnabled="False" Click="OnAbrirCarpetaClick"
+                                    ToolTipService.ToolTip="Abre la carpeta del resultado con el archivo seleccionado" />
+                            <Button x:Name="BtnCopiarRuta" Grid.Column="1" Content="Copiar ruta" HorizontalAlignment="Stretch" IsEnabled="False" Click="OnCopiarRutaClick"
+                                    ToolTipService.ToolTip="Copia la ruta completa del resultado al portapapeles" />
+                        </Grid>
                     </StackPanel>
                 </ScrollViewer>
             </Border>

@@ -358,6 +358,7 @@ public sealed partial class MainWindow : Window
             _selectedRegion = null;
             SeguirTargetLabel.Text = "Objetivo: Sin seleccionar";
             BtnExportar.IsEnabled = false;
+            UpdateResultButtons();
             BtnVistaPrevia.IsEnabled = true;
             if (PreviewOn) BtnVistaPrevia.IsChecked = false;
 
@@ -919,6 +920,7 @@ public sealed partial class MainWindow : Window
         }
 
         BtnExportar.IsEnabled = _followResult is not null || _detectionResult is not null || (_lastOutputFile is not null && File.Exists(_lastOutputFile));
+        UpdateResultButtons();
         SetRunningState(false);
         UpdateOverlay();
     }
@@ -1076,6 +1078,38 @@ public sealed partial class MainWindow : Window
 
     #region Exportación
 
+    private void UpdateResultButtons()
+    {
+        bool has = _lastOutputFile is not null && File.Exists(_lastOutputFile);
+        BtnAbrirCarpeta.IsEnabled = has;
+        BtnCopiarRuta.IsEnabled = has;
+    }
+
+    private void OnAbrirCarpetaClick(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            if (!ResultActions.OpenFolder(_lastOutputFile))
+            {
+                ShowNotification("El resultado ya no está donde se dejó.", InfoBarSeverity.Warning);
+                UpdateResultButtons();
+            }
+        }
+        catch (Exception ex)
+        {
+            ShowNotification(TaskExecutionController.FormatErrorMessage(ex), InfoBarSeverity.Error);
+        }
+    }
+
+    private void OnCopiarRutaClick(object sender, RoutedEventArgs e)
+    {
+        if (_lastOutputFile is null) return;
+        DataPackage package = new();
+        package.SetText(ResultActions.ClipboardText(_lastOutputFile));
+        Clipboard.SetContent(package);
+        ShowNotification($"Ruta copiada: {_lastOutputFile}", InfoBarSeverity.Success);
+    }
+
     private void OnExportarClick(object sender, RoutedEventArgs e)
     {
         int taskIdx = TaskSelector.SelectedIndex;
@@ -1115,6 +1149,9 @@ public sealed partial class MainWindow : Window
                 if (string.IsNullOrEmpty(savePath)) return;
 
                 File.Copy(_lastOutputFile, savePath, overwrite: true);
+                _lastOutputFile = savePath;
+                _prefs.RememberFile(savePath);
+                UpdateResultButtons();
                 ShowNotification($"Video exportado a: {savePath}", InfoBarSeverity.Success);
             }
         }
