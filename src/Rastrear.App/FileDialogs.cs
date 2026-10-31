@@ -29,7 +29,8 @@ internal static unsafe class FileDialogs
     public static readonly (string Name, string Spec) AllFilter =
         ("Todos los archivos", "*.*");
 
-    public static string? OpenSingle(nint owner, string title, params (string Name, string Spec)[] filters)
+    /// <param name="initialFolder">Carpeta con la que se abre el diálogo (la última usada); null o inexistente: la que decida Windows.</param>
+    public static string? OpenSingle(nint owner, string title, string? initialFolder, params (string Name, string Spec)[] filters)
     {
         IFileOpenDialog* dialog = null;
         IShellItem* item = null;
@@ -47,6 +48,7 @@ internal static unsafe class FileDialogs
             dialog->SetOptions(options);
 
             Configure((IFileDialog*)dialog, title, filters);
+            SetInitialFolder((IFileDialog*)dialog, initialFolder);
 
             if (dialog->Show((HWND)owner).FAILED)
             {
@@ -67,7 +69,7 @@ internal static unsafe class FileDialogs
         }
     }
 
-    public static string? SaveSingle(nint owner, string title, string defaultFileName, params (string Name, string Spec)[] filters)
+    public static string? SaveSingle(nint owner, string title, string defaultFileName, string? initialFolder, params (string Name, string Spec)[] filters)
     {
         IFileSaveDialog* dialog = null;
         IShellItem* item = null;
@@ -85,6 +87,7 @@ internal static unsafe class FileDialogs
             dialog->SetOptions(options);
 
             Configure((IFileDialog*)dialog, title, filters);
+            SetInitialFolder((IFileDialog*)dialog, initialFolder);
 
             fixed (char* pName = defaultFileName)
             {
@@ -186,6 +189,30 @@ internal static unsafe class FileDialogs
             {
                 pin.Free();
             }
+        }
+    }
+
+    /// <summary>Abre el diálogo en la carpeta dada (IFileDialog::SetFolder); si no existe o falla, se queda la de Windows.</summary>
+    private static void SetInitialFolder(IFileDialog* dialog, string? folder)
+    {
+        if (string.IsNullOrEmpty(folder) || !Directory.Exists(folder)) return;
+
+        IShellItem* item = null;
+        try
+        {
+            fixed (char* pFolder = folder)
+            {
+                if (SHCreateItemFromParsingName(pFolder, null, __uuidof<IShellItem>(), (void**)&item).FAILED || item == null)
+                {
+                    return;
+                }
+            }
+
+            dialog->SetFolder(item);
+        }
+        finally
+        {
+            if (item != null) item->Release();
         }
     }
 

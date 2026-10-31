@@ -1,5 +1,10 @@
 # Historial de cambios de Rastrear
 
+## [Sin publicar]
+
+### Añadido
+- La ventana recuerda la última carpeta (los diálogos de abrir y guardar se abren en ella), la última herramienta y los parámetros de cada una, en `%LOCALAPPDATA%\Dathinel\Rastrear\preferencias.json`.
+
 ## [1.0.0] - 2026-10-24
 
 ### Añadido

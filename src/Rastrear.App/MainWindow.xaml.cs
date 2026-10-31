@@ -57,6 +57,9 @@ public sealed partial class MainWindow : Window
     // Controlador de tareas y cancelación rápida
     private readonly TaskExecutionController _taskController = new();
 
+    // Última carpeta, última herramienta y sus parámetros (preferencias.json)
+    private readonly UserPreferences _prefs = UserPreferences.Load(UserPreferences.DefaultPath);
+
     // Ventana: mínimo en DIP y últimos límites sin maximizar (lo que se guarda en ventana.json)
     private const int MinWidthDip = 960;
     private const int MinHeightDip = 600;
@@ -79,8 +82,13 @@ public sealed partial class MainWindow : Window
         AppWindow.SetIcon(System.IO.Path.Combine(AppContext.BaseDirectory, "rastrear.ico"));
         AppWindow.TitleBar.PreferredTheme = TitleBarTheme.UseDefaultAppMode;
         RestorePlacement();
+        ApplyPreferences();
         AppWindow.Changed += OnAppWindowChanged;
-        Closed += (_, _) => SavePlacement();
+        Closed += (_, _) =>
+        {
+            SavePlacement();
+            SavePreferences();
+        };
 
         _playbackTimer.Tick += OnPlaybackTick;
         AboutVersionText.Text = "Versión " + (typeof(MainWindow).Assembly.GetName().Version?.ToString(3) ?? "desconocida");
@@ -181,6 +189,65 @@ public sealed partial class MainWindow : Window
 
     #endregion
 
+    #region Preferencias (última carpeta, herramienta y parámetros)
+
+    private void ApplyPreferences()
+    {
+        UserPreferences p = _prefs;
+        TaskSelector.SelectedIndex = p.ToolIndex;
+
+        if (p.FollowMode == "region") RbSeguirRegion.IsChecked = true; else RbSeguirPunto.IsChecked = true;
+        SliderPatternSize.Value = p.FollowPatternSize;
+
+        SwitchFondoModo.IsOn = p.BackgroundMask;
+        ComboCalidadFondo.SelectedIndex = p.BackgroundQuality == "alta" ? 1 : 0;
+        ComboDeviceFondo.SelectedIndex = DeviceIndex(p.BackgroundDevice);
+
+        ComboTargetDetectar.SelectedIndex = p.DetectTarget == "personas" ? 1 : 0;
+        ComboDeviceDetectar.SelectedIndex = DeviceIndex(p.DetectDevice);
+
+        switch (p.ReframeAspect)
+        {
+            case "1:1": RbAspect11.IsChecked = true; break;
+            case "4:5": RbAspect45.IsChecked = true; break;
+            default: RbAspect916.IsChecked = true; break;
+        }
+        SliderSmoothing.Value = p.ReframeSmoothing;
+
+        SliderIntensity.Value = p.StabilizeIntensity;
+        ChkAutoCrop.IsChecked = p.StabilizeAutoCrop;
+    }
+
+    private void CollectPreferences()
+    {
+        UserPreferences p = _prefs;
+        p.ToolIndex = TaskSelector.SelectedIndex;
+        p.FollowMode = RbSeguirRegion.IsChecked == true ? "region" : "punto";
+        p.FollowPatternSize = (int)SliderPatternSize.Value;
+        p.BackgroundMask = SwitchFondoModo.IsOn;
+        p.BackgroundQuality = ComboCalidadFondo.SelectedIndex == 1 ? "alta" : "normal";
+        p.BackgroundDevice = DeviceName(ComboDeviceFondo.SelectedIndex);
+        p.DetectTarget = ComboTargetDetectar.SelectedIndex == 1 ? "personas" : "rostros";
+        p.DetectDevice = DeviceName(ComboDeviceDetectar.SelectedIndex);
+        p.ReframeAspect = CurrentAspectPreset();
+        p.ReframeSmoothing = SliderSmoothing.Value;
+        p.StabilizeIntensity = SliderIntensity.Value;
+        p.StabilizeAutoCrop = ChkAutoCrop.IsChecked == true;
+        p.Normalize();
+    }
+
+    private void SavePreferences()
+    {
+        CollectPreferences();
+        _prefs.TrySave(UserPreferences.DefaultPath);
+    }
+
+    private static int DeviceIndex(string device) => device switch { "gpu" => 1, "cpu" => 2, _ => 0 };
+    private static string DeviceName(int index) => index switch { 1 => "gpu", 2 => "cpu", _ => "auto" };
+    private string CurrentAspectPreset() => RbAspect916.IsChecked == true ? "9:16" : (RbAspect11.IsChecked == true ? "1:1" : "4:5");
+
+    #endregion
+
     private void ShowNotification(string message, InfoBarSeverity severity = InfoBarSeverity.Error)
     {
         NotificationBar.Message = message;
@@ -216,7 +283,7 @@ public sealed partial class MainWindow : Window
 
     private async void OnElegirVideoClick(object sender, RoutedEventArgs e)
     {
-        string? path = FileDialogs.OpenSingle(_hwnd, "Elegir archivo de video", FileDialogs.VideoFilter, FileDialogs.AllFilter);
+        string? path = FileDialogs.OpenSingle(_hwnd, "Elegir archivo de video", _prefs.LastFolderIfExists, FileDialogs.VideoFilter, FileDialogs.AllFilter);
         if (!string.IsNullOrEmpty(path))
         {
             await OpenVideoFileAsync(path);
@@ -233,6 +300,8 @@ public sealed partial class MainWindow : Window
             VideoInfo info = await FfmpegTool.ProbeAsync(videoPath);
             _currentVideoPath = videoPath;
             _videoInfo = info;
+            _prefs.RememberFile(videoPath);
+            _prefs.TrySave(UserPreferences.DefaultPath);
 
             _timeModel = new PlayerTimeModel(info.EstimatedFrames, info.Fps, info.DurationSeconds);
             _transformer = new ViewportCoordinateTransformer(info.Width, info.Height);
@@ -572,8 +641,7 @@ public sealed partial class MainWindow : Window
         // 3. Guía de Reencuadre
         else if (TaskSelector.SelectedIndex == 3)
         {
-            string preset = RbAspect916.IsChecked == true ? "9:16" : (RbAspect11.IsChecked == true ? "1:1" : "4:5");
-            double aspect = OverlayGeometry.AspectRatioFromPreset(preset);
+            double aspect = OverlayGeometry.AspectRatioFromPreset(CurrentAspectPreset());
             UiRect cropVideo = OverlayGeometry.ComputeCropRect(_videoInfo.Width, _videoInfo.Height, aspect);
             UiRect cropView = _transformer.VideoRectToViewport(cropVideo);
 
@@ -639,6 +707,7 @@ public sealed partial class MainWindow : Window
 
         ClearNotification();
         Pause();
+        SavePreferences();
 
         CancellationToken ct = _taskController.BeginExecution();
         SetRunningState(true);
@@ -708,8 +777,7 @@ public sealed partial class MainWindow : Window
                     break;
 
                 case 3: // Reencuadrar
-                    string presetAspect = RbAspect916.IsChecked == true ? "9:16" : (RbAspect11.IsChecked == true ? "1:1" : "4:5");
-                    double targetAspect = OverlayGeometry.AspectRatioFromPreset(presetAspect);
+                    double targetAspect = OverlayGeometry.AspectRatioFromPreset(CurrentAspectPreset());
                     string outReframe = System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"rastrear_reencuadre_{DateTime.Now:HHmmss}.mp4");
 
                     await VisionService.ReframeAsync(
@@ -795,7 +863,7 @@ public sealed partial class MainWindow : Window
         {
             if (taskIdx == 0 && _followResult is not null)
             {
-                string? savePath = FileDialogs.SaveSingle(_hwnd, "Guardar seguimiento", "seguimiento.csv", FileDialogs.CsvFilter, FileDialogs.JsonFilter);
+                string? savePath = FileDialogs.SaveSingle(_hwnd, "Guardar seguimiento", "seguimiento.csv", _prefs.LastFolderIfExists, FileDialogs.CsvFilter, FileDialogs.JsonFilter);
                 if (string.IsNullOrEmpty(savePath)) return;
 
                 using StreamWriter sw = new(savePath);
@@ -811,7 +879,7 @@ public sealed partial class MainWindow : Window
             }
             else if (taskIdx == 2 && _detectionResult is not null)
             {
-                string? savePath = FileDialogs.SaveSingle(_hwnd, "Guardar detecciones", "detecciones.json", FileDialogs.JsonFilter);
+                string? savePath = FileDialogs.SaveSingle(_hwnd, "Guardar detecciones", "detecciones.json", _prefs.LastFolderIfExists, FileDialogs.JsonFilter);
                 if (string.IsNullOrEmpty(savePath)) return;
 
                 string json = System.Text.Json.JsonSerializer.Serialize(_detectionResult, RastrearJsonContext.Default.DetectionResult);
@@ -822,7 +890,7 @@ public sealed partial class MainWindow : Window
             {
                 string defName = System.IO.Path.GetFileName(_lastOutputFile);
                 string ext = System.IO.Path.GetExtension(_lastOutputFile);
-                string? savePath = FileDialogs.SaveSingle(_hwnd, "Exportar video resultante", defName, (ext.ToUpperInvariant(), $"*{ext}"), FileDialogs.AllFilter);
+                string? savePath = FileDialogs.SaveSingle(_hwnd, "Exportar video resultante", defName, _prefs.LastFolderIfExists, (ext.ToUpperInvariant(), $"*{ext}"), FileDialogs.AllFilter);
                 if (string.IsNullOrEmpty(savePath)) return;
 
                 File.Copy(_lastOutputFile, savePath, overwrite: true);
