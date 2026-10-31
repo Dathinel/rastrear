@@ -5,7 +5,8 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     Title="Rastrear">
 
-    <Grid Background="{ThemeResource WindowBrush}">
+    <!-- Se puede soltar un video (o varios: cola) en cualquier parte de la ventana -->
+    <Grid Background="{ThemeResource WindowBrush}" AllowDrop="True" DragOver="OnVideoDragOver" Drop="OnVideoDrop">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
@@ -69,11 +70,11 @@
                 <Grid.RowDefinitions>
                     <RowDefinition Height="*" />
                     <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
 
                 <!-- Visor de video con superposición: oscuro en los dos temas -->
-                <Border Grid.Row="0" Background="{StaticResource ViewportBrush}" BorderBrush="{StaticResource ViewportBorderBrush}" BorderThickness="1" CornerRadius="8"
-                        AllowDrop="True" DragOver="OnVideoDragOver" Drop="OnVideoDrop">
+                <Border Grid.Row="0" Background="{StaticResource ViewportBrush}" BorderBrush="{StaticResource ViewportBorderBrush}" BorderThickness="1" CornerRadius="8">
                     <Grid x:Name="ViewportContainer" SizeChanged="OnViewportSizeChanged">
                         <!-- Estado vacío: mira con trayectoria y qué hacer -->
                         <StackPanel x:Name="EmptyStatePrompt" HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="16">
@@ -127,6 +128,20 @@
                                        FontFamily="{StaticResource MonoFont}" FontSize="13" Foreground="{ThemeResource TextMutedBrush}" Text="00:00.00 / 00:00.00 (cuadro 0/0)" />
                         </Grid>
                     </Grid>
+                </Border>
+
+                <!-- Cola de videos soltados: estado y progreso por archivo -->
+                <Border x:Name="QueuePanel" Grid.Row="2" Background="{ThemeResource PanelBrush}" BorderBrush="{ThemeResource PanelBorderBrush}" BorderThickness="1" CornerRadius="8"
+                        Padding="16,8" Visibility="Collapsed">
+                    <StackPanel Spacing="4">
+                        <Grid>
+                            <TextBlock x:Name="QueueTitle" FontFamily="{StaticResource TitleFont}" FontSize="14" FontWeight="SemiBold" Foreground="{ThemeResource TextBrush}" VerticalAlignment="Center" />
+                            <Button x:Name="BtnVaciarCola" Content="Vaciar" FontSize="12" Padding="8,2" HorizontalAlignment="Right" Click="OnVaciarColaClick" />
+                        </Grid>
+                        <ScrollViewer MaxHeight="120" VerticalScrollBarVisibility="Auto">
+                            <StackPanel x:Name="QueueList" Spacing="2" />
+                        </ScrollViewer>
+                    </StackPanel>
                 </Border>
             </Grid>
 

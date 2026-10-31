@@ -136,6 +136,7 @@ public static class FfmpegTool
         {
             throw new RastrearModuleException($"Error al iniciar ffprobe ({ffprobe}): {ex.Message}", ex);
         }
+        ChildProcessRegistry.TrackUntilExit(process, "ffprobe");
 
         string json = await process.StandardOutput.ReadToEndAsync(cancellationToken).ConfigureAwait(false);
         string stderr = await process.StandardError.ReadToEndAsync(cancellationToken).ConfigureAwait(false);
@@ -226,6 +227,7 @@ public static class FfmpegTool
         try
         {
             process.Start();
+            ChildProcessRegistry.TrackUntilExit(process, "ffmpeg (decodificar)");
             return process;
         }
         catch (Exception ex)
@@ -260,6 +262,7 @@ public static class FfmpegTool
         try
         {
             process.Start();
+            ChildProcessRegistry.TrackUntilExit(process, "ffmpeg (codificar)");
             return process;
         }
         catch (Exception ex)

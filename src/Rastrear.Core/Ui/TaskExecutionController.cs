@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using Rastrear.Core.Model;
+using Rastrear.Core.Video;
 
 namespace Rastrear.Core.Ui;
 
@@ -82,6 +83,13 @@ public sealed class TaskExecutionController
 
     public static string FormatMinSec(TimeSpan t) => $"{(int)t.TotalMinutes}:{t.Seconds:00}";
 
+    /// <summary>Lo que seguía vivo (ffmpeg, módulo) al vencer el tope de <see cref="CancelAsync"/>; vacío si no quedó nada.</summary>
+    public IReadOnlyList<string> LeftAliveAfterCancel { get; private set; } = [];
+
+    /// <summary>
+    /// Cancela el token y además mata los procesos hijos apuntados en <see cref="ChildProcessRegistry"/> (ffmpeg, ffprobe
+    /// y el módulo de visión), esperando hasta <paramref name="timeout"/> a que salgan: cancelar no deja nada vivo.
+    /// </summary>
     public async Task<bool> CancelAsync(TimeSpan timeout = default)
     {
         if (State != ExecutionState.Running || _cts is null)
@@ -99,6 +107,7 @@ public sealed class TaskExecutionController
 
         Stopwatch sw = Stopwatch.StartNew();
         _cts.Cancel();
+        LeftAliveAfterCancel = await ChildProcessRegistry.KillAllAsync(timeout).ConfigureAwait(false);
         sw.Stop();
         LastCancelDuration = sw.Elapsed;
 

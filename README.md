@@ -13,7 +13,7 @@ Seguimiento y visión por IA para video en Windows, en tu PC y sin conexión: se
 
 ## Cómo se usa
 
-`Rastrear.App.exe [video]`: suelta o elige un video, elige la operación (seguir, quitar fondo, detectar, reencuadrar, estabilizar), marca el punto o la región con un clic o un arrastre sobre el cuadro, pulsa «Ejecutar» y exporta. `Rastrear.Cli.exe` hace lo mismo desde la consola. Los dos buscan FFmpeg en `RODAJE_ENTORNO` y el módulo de visión en `RASTREAR_MODULOS`, en lo instalado por el Lanzador (`%LOCALAPPDATA%\Dathinel\Comun\modulos\modulo-vision`), en los módulos de Rodaje o en `modulos\` junto al exe.
+`Rastrear.App.exe [video]`: suelta o elige un video (o suelta varios: quedan en cola y se procesan uno tras otro), elige la operación (seguir, quitar fondo, detectar, reencuadrar, estabilizar), marca el punto o la región con un clic o un arrastre sobre el cuadro y pulsa «Ejecutar»; el resultado queda junto al video de entrada y «Exportar» lo copia donde quieras. `Rastrear.Cli.exe` hace lo mismo desde la consola. Los dos buscan FFmpeg en `RODAJE_ENTORNO` y el módulo de visión en `RASTREAR_MODULOS`, en lo instalado por el Lanzador (`%LOCALAPPDATA%\Dathinel\Comun\modulos\modulo-vision`), en los módulos de Rodaje o en `modulos\` junto al exe.
 
 ## Distribución y empaquetado
 

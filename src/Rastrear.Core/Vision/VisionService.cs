@@ -94,6 +94,13 @@ public static class VisionService
             "\nInstala «modulo-vision» con el Lanzador, pasa --modulo <ruta> o define la variable RASTREAR_MODULOS.");
     }
 
+    /// <summary>Apunta el módulo en <see cref="ChildProcessRegistry"/> para que «Cancelar» lo mate si no sale solo.</summary>
+    private static ChildProcessRegistry.Registration TrackModule(ModuleProcess process) => ChildProcessRegistry.Track(
+        "módulo de visión",
+        process.Kill,
+        () => process.Exited.IsCompleted,
+        async timeout => await Task.WhenAny(process.Exited, Task.Delay(timeout)).ConfigureAwait(false) == process.Exited);
+
     private static void EnsureDotnetEnvironment()
     {
         if (string.IsNullOrEmpty(Environment.GetEnvironmentVariable("DOTNET_ROOT")))
@@ -155,6 +162,7 @@ public static class VisionService
         }
 
         await using (process.ConfigureAwait(false))
+        using (TrackModule(process))
         {
             using Process decoder = FfmpegTool.StartDecoder(videoPath, ffmpeg);
             try
@@ -306,6 +314,7 @@ public static class VisionService
         }
 
         await using (process.ConfigureAwait(false))
+        using (TrackModule(process))
         {
             using Process decoder = FfmpegTool.StartDecoder(inputVideo, ffmpeg);
             using Process encoder = FfmpegTool.StartEncoder(outputVideo, info.Width, info.Height, info.Fps, outFormat, ffmpeg);
@@ -490,6 +499,7 @@ public static class VisionService
 
         ReframeOutput reframeOutput;
         await using (process.ConfigureAwait(false))
+        using (TrackModule(process))
         {
             ReframeParameters parameters = new(
                 Aspecto: targetAspect,
