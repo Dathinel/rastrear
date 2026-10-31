@@ -27,6 +27,7 @@ public sealed record UiProgressInfo(
 public sealed class TaskExecutionController
 {
     private CancellationTokenSource? _cts;
+    private ChildProcessRegistry.Scope? _scope;
     private readonly Stopwatch _stopwatch = new();
 
     public ExecutionState State { get; private set; } = ExecutionState.Idle;
@@ -41,6 +42,7 @@ public sealed class TaskExecutionController
     {
         _cts?.Dispose();
         _cts = new CancellationTokenSource();
+        _scope = ChildProcessRegistry.BeginScope();
         _stopwatch.Restart();
         State = ExecutionState.Running;
         CurrentFraction = 0.0;
@@ -86,9 +88,12 @@ public sealed class TaskExecutionController
     /// <summary>Lo que seguía vivo (ffmpeg, módulo) al vencer el tope de <see cref="CancelAsync"/>; vacío si no quedó nada.</summary>
     public IReadOnlyList<string> LeftAliveAfterCancel { get; private set; } = [];
 
+    /// <summary>Los procesos hijos de la ejecución en curso (lo arrancado tras <see cref="BeginExecution"/> en su flujo).</summary>
+    public ChildProcessRegistry.Scope? Processes => _scope;
+
     /// <summary>
-    /// Cancela el token y además mata los procesos hijos apuntados en <see cref="ChildProcessRegistry"/> (ffmpeg, ffprobe
-    /// y el módulo de visión), esperando hasta <paramref name="timeout"/> a que salgan: cancelar no deja nada vivo.
+    /// Cancela el token y además mata los procesos hijos de esta ejecución apuntados en <see cref="ChildProcessRegistry"/>
+    /// (ffmpeg, ffprobe y el módulo de visión), esperando hasta <paramref name="timeout"/> a que salgan: cancelar no deja nada vivo.
     /// </summary>
     public async Task<bool> CancelAsync(TimeSpan timeout = default)
     {
@@ -107,7 +112,7 @@ public sealed class TaskExecutionController
 
         Stopwatch sw = Stopwatch.StartNew();
         _cts.Cancel();
-        LeftAliveAfterCancel = await ChildProcessRegistry.KillAllAsync(timeout).ConfigureAwait(false);
+        LeftAliveAfterCancel = _scope is null ? [] : await _scope.KillAllAsync(timeout).ConfigureAwait(false);
         sw.Stop();
         LastCancelDuration = sw.Elapsed;
 

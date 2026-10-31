@@ -93,35 +93,55 @@ public class ColaTests
     }
 
     [Fact]
-    public async Task Cancelar_mata_los_procesos_apuntados_y_no_deja_ninguno_vivo()
+    public async Task Cancelar_mata_los_procesos_de_su_ejecucion_y_no_los_de_otra()
     {
         // Un proceso que dormiría 30 s: en Windows «ping» con espera, en Linux «sleep».
-        ProcessStartInfo psi = OperatingSystem.IsWindows()
-            ? new ProcessStartInfo("cmd.exe", "/c ping -n 31 127.0.0.1 >nul")
-            : new ProcessStartInfo("sleep", "30");
-        psi.UseShellExecute = false;
-        psi.CreateNoWindow = true;
-        using Process dormido = Process.Start(psi)!;
-
-        bool killed = false;
-        using (ChildProcessRegistry.Track(dormido, "ffmpeg (prueba)"))
-        using (ChildProcessRegistry.Track("módulo (prueba)", () => killed = true, () => killed, _ => Task.FromResult(killed)))
+        static Process Dormido()
         {
-            Assert.Equal(2, ChildProcessRegistry.LiveCount);
+            ProcessStartInfo psi = OperatingSystem.IsWindows()
+                ? new ProcessStartInfo("cmd.exe", "/c ping -n 31 127.0.0.1 >nul")
+                : new ProcessStartInfo("sleep", "30");
+            psi.UseShellExecute = false;
+            psi.CreateNoWindow = true;
+            return Process.Start(psi)!;
+        }
 
-            TaskExecutionController controlador = new();
-            CancellationToken ct = controlador.BeginExecution();
-            Stopwatch sw = Stopwatch.StartNew();
-            bool cancelado = await controlador.CancelAsync(TimeSpan.FromSeconds(10));
-            sw.Stop();
+        // Fuera de toda ejecución no se apunta nada (el reproductor, otras pruebas en paralelo)
+        using Process ajeno = Dormido();
+        Assert.Null(ChildProcessRegistry.Current);
+        ChildProcessRegistry.TrackUntilExit(ajeno, "ajeno");
 
-            Assert.True(cancelado);
-            Assert.True(ct.IsCancellationRequested);
-            Assert.True(dormido.HasExited, "ffmpeg (prueba) seguía vivo tras cancelar");
-            Assert.True(killed);
-            Assert.Empty(controlador.LeftAliveAfterCancel);
-            Assert.Equal(0, ChildProcessRegistry.LiveCount);
-            Assert.True(sw.Elapsed < TimeSpan.FromSeconds(10));
+        TaskExecutionController controlador = new();
+        CancellationToken ct = controlador.BeginExecution();
+        Assert.NotNull(controlador.Processes);
+        Assert.Same(controlador.Processes, ChildProcessRegistry.Current);
+
+        using Process propio = Dormido();
+        bool killed = false;
+        try
+        {
+            ChildProcessRegistry.TrackUntilExit(propio, "ffmpeg (prueba)");
+            using (ChildProcessRegistry.Track("módulo (prueba)", () => killed = true, () => killed, _ => Task.FromResult(killed)))
+            {
+                Assert.Equal(2, controlador.Processes.LiveCount);
+
+                Stopwatch sw = Stopwatch.StartNew();
+                bool cancelado = await controlador.CancelAsync(TimeSpan.FromSeconds(10));
+                sw.Stop();
+
+                Assert.True(cancelado);
+                Assert.True(ct.IsCancellationRequested);
+                Assert.True(propio.HasExited, "ffmpeg (prueba) seguía vivo tras cancelar");
+                Assert.True(killed);
+                Assert.Empty(controlador.LeftAliveAfterCancel);
+                Assert.Equal(0, controlador.Processes.LiveCount);
+                Assert.True(sw.Elapsed < TimeSpan.FromSeconds(10));
+                Assert.False(ajeno.HasExited, "cancelar mató un proceso de otra ejecución");
+            }
+        }
+        finally
+        {
+            try { ajeno.Kill(); } catch (InvalidOperationException) { }
         }
     }
 }
