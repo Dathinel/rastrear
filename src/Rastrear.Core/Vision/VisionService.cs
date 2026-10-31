@@ -89,9 +89,21 @@ public static class VisionService
             }
         }
 
-        throw new RastrearUserException(
-            "No se encontró el módulo de visión (Rodaje.Module.Vision.exe). Rutas probadas:\n  " + string.Join("\n  ", tried) +
-            "\nInstala «modulo-vision» con el Lanzador, pasa --modulo <ruta> o define la variable RASTREAR_MODULOS.");
+        throw new VisionModuleMissingException(tried);
+    }
+
+    /// <summary>Si el módulo está instalado (lo que mira <see cref="FindModule(string?)"/>), sin lanzar.</summary>
+    public static bool IsModuleInstalled()
+    {
+        try
+        {
+            FindModule();
+            return true;
+        }
+        catch (VisionModuleMissingException)
+        {
+            return false;
+        }
     }
 
     /// <summary>Apunta el módulo en <see cref="ChildProcessRegistry"/> para que «Cancelar» lo mate si no sale solo.</summary>

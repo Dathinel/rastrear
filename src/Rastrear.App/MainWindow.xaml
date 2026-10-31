@@ -7,6 +7,12 @@
 
     <!-- Se puede soltar un video (o varios: cola) en cualquier parte de la ventana -->
     <Grid Background="{ThemeResource WindowBrush}" AllowDrop="True" DragOver="OnVideoDragOver" Drop="OnVideoDrop">
+        <!-- Atajos: Ctrl+O abrir, Ctrl+Enter empezar, Esc cancelar (KeyboardShortcuts decide cuándo valen) -->
+        <Grid.KeyboardAccelerators>
+            <KeyboardAccelerator Key="O" Modifiers="Control" Invoked="OnShortcutInvoked" />
+            <KeyboardAccelerator Key="Enter" Modifiers="Control" Invoked="OnShortcutInvoked" />
+            <KeyboardAccelerator Key="Escape" Invoked="OnShortcutInvoked" />
+        </Grid.KeyboardAccelerators>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
@@ -39,7 +45,7 @@
 
             <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center" Spacing="12">
                 <HyperlinkButton Content="Acerca de" Padding="4,2" FontSize="12" Foreground="{ThemeResource TextMutedBrush}" Click="OnAcercaDeClick" />
-                <Button x:Name="BtnElegirVideo" Content="Elegir video…" Click="OnElegirVideoClick" />
+                <Button x:Name="BtnElegirVideo" Content="Elegir video…" Click="OnElegirVideoClick" ToolTipService.ToolTip="Ctrl+O" />
             </StackPanel>
         </Grid>
 
@@ -242,8 +248,8 @@
                                     <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
                                 <Button x:Name="BtnEjecutar" Content="Ejecutar" Style="{StaticResource AccentButtonStyle}"
-                                        HorizontalAlignment="Stretch" Click="OnEjecutarClick" />
-                                <Button x:Name="BtnCancelar" Grid.Column="1" Content="Cancelar" IsEnabled="False" Click="OnCancelarClick" />
+                                        HorizontalAlignment="Stretch" Click="OnEjecutarClick" ToolTipService.ToolTip="Ctrl+Enter" />
+                                <Button x:Name="BtnCancelar" Grid.Column="1" Content="Cancelar" IsEnabled="False" Click="OnCancelarClick" ToolTipService.ToolTip="Esc" />
                             </Grid>
 
                             <ProgressBar x:Name="TaskProgressBar" Minimum="0" Maximum="100" Value="0" Visibility="Collapsed" />

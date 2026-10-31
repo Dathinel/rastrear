@@ -260,10 +260,58 @@ public sealed partial class MainWindow : Window
 
     private void ShowNotification(string message, InfoBarSeverity severity = InfoBarSeverity.Error)
     {
+        NotificationBar.ActionButton = null;
         NotificationBar.Message = message;
         NotificationBar.Severity = severity;
         NotificationBar.IsOpen = true;
     }
+
+    /// <summary>Falta el módulo de visión: mensaje claro y, si el Lanzador está en el PC, un botón que lo abre.</summary>
+    private void ShowModuleMissing()
+    {
+        string? launcher = LauncherLocator.Find();
+        ShowNotification(VisionModuleMissingException.UserMessage(launcherFound: launcher is not null), InfoBarSeverity.Warning);
+        if (launcher is null) return;
+
+        Button open = new() { Content = "Abrir el Lanzador" };
+        open.Click += (_, _) =>
+        {
+            try
+            {
+                Process.Start(new ProcessStartInfo(launcher) { UseShellExecute = true });
+            }
+            catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException or FileNotFoundException)
+            {
+                ShowNotification($"No se pudo abrir el Lanzador ({launcher}): {ex.Message}", InfoBarSeverity.Error);
+            }
+        };
+        NotificationBar.ActionButton = open;
+    }
+
+    #region Atajos de teclado
+
+    private void OnShortcutInvoked(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
+    {
+        bool ctrl = sender.Modifiers.HasFlag(Windows.System.VirtualKeyModifiers.Control);
+        ShortcutAction action = KeyboardShortcuts.Resolve(sender.Key.ToString(), ctrl, _taskController.IsBusy, _videoInfo is not null);
+        switch (action)
+        {
+            case ShortcutAction.OpenVideo:
+                OnElegirVideoClick(sender, new RoutedEventArgs());
+                break;
+            case ShortcutAction.Run:
+                OnEjecutarClick(sender, new RoutedEventArgs());
+                break;
+            case ShortcutAction.Cancel:
+                OnCancelarClick(sender, new RoutedEventArgs());
+                break;
+            default:
+                return;
+        }
+        args.Handled = true;
+    }
+
+    #endregion
 
     private void ClearNotification()
     {
@@ -840,6 +888,12 @@ public sealed partial class MainWindow : Window
             return;
         }
 
+        if (taskIdx is 1 or 2 or 3 && !VisionService.IsModuleInstalled())
+        {
+            ShowModuleMissing();
+            return;
+        }
+
         ClearNotification();
         Pause();
         SavePreferences();
@@ -887,6 +941,16 @@ public sealed partial class MainWindow : Window
                 _queue.MarkCancelled();
                 cancelled = true;
                 break;
+            }
+            catch (VisionModuleMissingException)
+            {
+                // Desapareció entre la comprobación y el arranque: no tiene sentido seguir con la cola.
+                _queue.MarkFailed("falta el módulo de visión");
+                RefreshQueueList();
+                _taskController.MarkFaulted(new RastrearUserException(VisionModuleMissingException.UserMessage(launcherFound: false)));
+                SetRunningState(false);
+                ShowModuleMissing();
+                return;
             }
             catch (Exception ex)
             {

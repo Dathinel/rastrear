@@ -50,7 +50,9 @@ public sealed class BusquedaModuloTests : IDisposable
     public void Sin_modulo_lista_las_rutas_probadas()
     {
         _env["RASTREAR_MODULOS"] = Path.Combine(_raiz, "nada");
-        var ex = Assert.Throws<RastrearUserException>(Busca);
+        var ex = Assert.Throws<VisionModuleMissingException>(Busca);
+        Assert.IsAssignableFrom<RastrearUserException>(ex);
+        Assert.Contains(Path.Combine(_raiz, "nada", VisionService.ModuleExe), ex.TriedPaths);
         Assert.Contains(Path.Combine(_raiz, "nada", VisionService.ModuleExe), ex.Message);
         Assert.Contains(Path.Combine(LocalAppData, "Dathinel", "Comun", "modulos", "modulo-vision", "*", VisionService.ModuleExe), ex.Message);
         Assert.Contains(Path.Combine(Base, "modulos", VisionService.ModuleExe), ex.Message);
