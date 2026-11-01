@@ -112,6 +112,11 @@ Para probarlo sin esperar a una release real, pon en `%LOCALAPPDATA%\Dathinel\Ra
 4. **Acerca de:** el interruptor «Avisar cuando haya una versión nueva» viene activado; apágalo, cierra y abre: no hay franja aunque toque consultar (`avisarVersionNueva: false`). «Buscar actualizaciones» consulta al momento aunque esté apagado o se hayan consultado hace un minuto: «Consultando GitHub…» y después «No hay nada nuevo: la 1.0.0 es la última versión.», «Rastrear 1.1.0 disponible» (y la franja detrás del diálogo, aunque se hubiera dicho «Más tarde») o «No se pudo consultar GitHub…» sin red.
 5. **Daniel:** el aviso solo dice que hay versión nueva; instalar sigue siendo cosa del Lanzador o del zip/instalador de la release. Si el Lanzador va a hacer algo con un argumento (abrir la ficha de Rastrear), hay que pasárselo en `OnAbrirLanzadorClick`.
 
+## Resultado del repaso del 1-nov (Claude con el ratón, `dist\staging\Rastrear-1.0.0`)
+
+Pasaron: abrir con el video como argumento (metadatos en la cabecera, cuadro 1/719), clic en modo Punto (marcador cian sobre el punto, «X: 541, Y: 98»), reproducir y pausar con contador sincronizado, Ejecutar «Seguir» (hecho en 8 s, franja verde con el `.csv`). Sin probar: región, detectar, reencuadrar, exportar, cancelar.
+Nota: la copia instalada por el Lanzador (`%LOCALAPPDATA%\Dathinel\Herramientas\rastrear\1.0.0`) también abre.
+
 ---
 
 ## 10. Módulo vivo en «Después», cola sin «Seguir» y carpeta de salida (1-nov, rama `claude/quirky-hawking-c8tin7`)
