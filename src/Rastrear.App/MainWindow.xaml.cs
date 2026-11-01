@@ -1,7 +1,9 @@
 using System;
 using System.Diagnostics;
+using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
+using System.Linq;
 using System.Runtime.InteropServices.WindowsRuntime;
 using System.Threading;
 using System.Threading.Tasks;
@@ -57,6 +59,17 @@ public sealed partial class MainWindow : Window
     // Controlador de tareas y cancelación rápida
     private readonly TaskExecutionController _taskController = new();
 
+    // Última carpeta, última herramienta y sus parámetros (preferencias.json)
+    private readonly UserPreferences _prefs = UserPreferences.Load(UserPreferences.DefaultPath);
+
+    // Cola de videos soltados: se procesan uno tras otro con la misma herramienta
+    private readonly BatchQueue _queue = new();
+
+    // Vista previa «después» del primer cuadro
+    private WriteableBitmap? _previewBitmap;
+    private CancellationTokenSource? _previewCts;
+    private bool PreviewOn => BtnVistaPrevia.IsChecked == true;
+
     // Ventana: mínimo en DIP y últimos límites sin maximizar (lo que se guarda en ventana.json)
     private const int MinWidthDip = 960;
     private const int MinHeightDip = 600;
@@ -79,8 +92,13 @@ public sealed partial class MainWindow : Window
         AppWindow.SetIcon(System.IO.Path.Combine(AppContext.BaseDirectory, "rastrear.ico"));
         AppWindow.TitleBar.PreferredTheme = TitleBarTheme.UseDefaultAppMode;
         RestorePlacement();
+        ApplyPreferences();
         AppWindow.Changed += OnAppWindowChanged;
-        Closed += (_, _) => SavePlacement();
+        Closed += (_, _) =>
+        {
+            SavePlacement();
+            SavePreferences();
+        };
 
         _playbackTimer.Tick += OnPlaybackTick;
         AboutVersionText.Text = "Versión " + (typeof(MainWindow).Assembly.GetName().Version?.ToString(3) ?? "desconocida");
@@ -181,12 +199,119 @@ public sealed partial class MainWindow : Window
 
     #endregion
 
+    #region Preferencias (última carpeta, herramienta y parámetros)
+
+    private void ApplyPreferences()
+    {
+        UserPreferences p = _prefs;
+        TaskSelector.SelectedIndex = p.ToolIndex;
+
+        if (p.FollowMode == "region") RbSeguirRegion.IsChecked = true; else RbSeguirPunto.IsChecked = true;
+        SliderPatternSize.Value = p.FollowPatternSize;
+
+        SwitchFondoModo.IsOn = p.BackgroundMask;
+        ComboCalidadFondo.SelectedIndex = p.BackgroundQuality == "alta" ? 1 : 0;
+        ComboDeviceFondo.SelectedIndex = DeviceIndex(p.BackgroundDevice);
+
+        ComboTargetDetectar.SelectedIndex = p.DetectTarget == "personas" ? 1 : 0;
+        ComboDeviceDetectar.SelectedIndex = DeviceIndex(p.DetectDevice);
+
+        switch (p.ReframeAspect)
+        {
+            case "1:1": RbAspect11.IsChecked = true; break;
+            case "4:5": RbAspect45.IsChecked = true; break;
+            default: RbAspect916.IsChecked = true; break;
+        }
+        SliderSmoothing.Value = p.ReframeSmoothing;
+
+        SliderIntensity.Value = p.StabilizeIntensity;
+        ChkAutoCrop.IsChecked = p.StabilizeAutoCrop;
+    }
+
+    private void CollectPreferences()
+    {
+        UserPreferences p = _prefs;
+        p.ToolIndex = TaskSelector.SelectedIndex;
+        p.FollowMode = RbSeguirRegion.IsChecked == true ? "region" : "punto";
+        p.FollowPatternSize = (int)SliderPatternSize.Value;
+        p.BackgroundMask = SwitchFondoModo.IsOn;
+        p.BackgroundQuality = ComboCalidadFondo.SelectedIndex == 1 ? "alta" : "normal";
+        p.BackgroundDevice = DeviceName(ComboDeviceFondo.SelectedIndex);
+        p.DetectTarget = ComboTargetDetectar.SelectedIndex == 1 ? "personas" : "rostros";
+        p.DetectDevice = DeviceName(ComboDeviceDetectar.SelectedIndex);
+        p.ReframeAspect = CurrentAspectPreset();
+        p.ReframeSmoothing = SliderSmoothing.Value;
+        p.StabilizeIntensity = SliderIntensity.Value;
+        p.StabilizeAutoCrop = ChkAutoCrop.IsChecked == true;
+        p.Normalize();
+    }
+
+    private void SavePreferences()
+    {
+        CollectPreferences();
+        _prefs.TrySave(UserPreferences.DefaultPath);
+    }
+
+    private static int DeviceIndex(string device) => device switch { "gpu" => 1, "cpu" => 2, _ => 0 };
+    private static string DeviceName(int index) => index switch { 1 => "gpu", 2 => "cpu", _ => "auto" };
+    private string CurrentAspectPreset() => RbAspect916.IsChecked == true ? "9:16" : (RbAspect11.IsChecked == true ? "1:1" : "4:5");
+
+    #endregion
+
     private void ShowNotification(string message, InfoBarSeverity severity = InfoBarSeverity.Error)
     {
+        NotificationBar.ActionButton = null;
         NotificationBar.Message = message;
         NotificationBar.Severity = severity;
         NotificationBar.IsOpen = true;
     }
+
+    /// <summary>Falta el módulo de visión: mensaje claro y, si el Lanzador está en el PC, un botón que lo abre.</summary>
+    private void ShowModuleMissing()
+    {
+        string? launcher = LauncherLocator.Find();
+        ShowNotification(VisionModuleMissingException.UserMessage(launcherFound: launcher is not null), InfoBarSeverity.Warning);
+        if (launcher is null) return;
+
+        Button open = new() { Content = "Abrir el Lanzador" };
+        open.Click += (_, _) =>
+        {
+            try
+            {
+                Process.Start(new ProcessStartInfo(launcher) { UseShellExecute = true });
+            }
+            catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException or FileNotFoundException)
+            {
+                ShowNotification($"No se pudo abrir el Lanzador ({launcher}): {ex.Message}", InfoBarSeverity.Error);
+            }
+        };
+        NotificationBar.ActionButton = open;
+    }
+
+    #region Atajos de teclado
+
+    private void OnShortcutInvoked(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
+    {
+        bool ctrl = sender.Modifiers.HasFlag(Windows.System.VirtualKeyModifiers.Control);
+        ShortcutAction action = KeyboardShortcuts.Resolve(sender.Key.ToString(), ctrl, _taskController.IsBusy, _videoInfo is not null);
+        switch (action)
+        {
+            case ShortcutAction.OpenVideo:
+                OnElegirVideoClick(sender, new RoutedEventArgs());
+                break;
+            case ShortcutAction.Run:
+                OnEjecutarClick(sender, new RoutedEventArgs());
+                break;
+            case ShortcutAction.Cancel:
+                OnCancelarClick(sender, new RoutedEventArgs());
+                break;
+            default:
+                return;
+        }
+        args.Handled = true;
+    }
+
+    #endregion
 
     private void ClearNotification()
     {
@@ -206,19 +331,40 @@ public sealed partial class MainWindow : Window
     private async void OnVideoDrop(object sender, DragEventArgs e)
     {
         if (!e.DataView.Contains(StandardDataFormats.StorageItems)) return;
+        if (_taskController.IsBusy)
+        {
+            ShowNotification("Espera a que termine o cancela antes de soltar más videos.", InfoBarSeverity.Warning);
+            return;
+        }
 
         var items = await e.DataView.GetStorageItemsAsync();
-        if (items.Count > 0 && items[0] is StorageFile file)
+        List<string> videos = BatchQueue.FilterDroppedPaths(items.OfType<StorageFile>().Select(f => f.Path));
+        if (videos.Count == 0)
         {
-            await OpenVideoFileAsync(file.Path);
+            ShowNotification("Lo soltado no es un video (mp4, mov, webm, mkv, avi, ts…).", InfoBarSeverity.Warning);
+            return;
+        }
+
+        _queue.Clear();
+        _queue.Enqueue(videos);
+        RefreshQueueList();
+        await OpenVideoFileAsync(videos[0]);
+        if (videos.Count > 1)
+        {
+            ShowNotification($"{videos.Count} videos en cola. «Ejecutar» aplica la herramienta a todos, uno tras otro, con el resultado junto a cada video.", InfoBarSeverity.Informational);
         }
     }
 
     private async void OnElegirVideoClick(object sender, RoutedEventArgs e)
     {
-        string? path = FileDialogs.OpenSingle(_hwnd, "Elegir archivo de video", FileDialogs.VideoFilter, FileDialogs.AllFilter);
+        string? path = FileDialogs.OpenSingle(_hwnd, "Elegir archivo de video", _prefs.LastFolderIfExists, FileDialogs.VideoFilter, FileDialogs.AllFilter);
         if (!string.IsNullOrEmpty(path))
         {
+            if (!_taskController.IsBusy)
+            {
+                _queue.Clear();
+                RefreshQueueList();
+            }
             await OpenVideoFileAsync(path);
         }
     }
@@ -233,6 +379,8 @@ public sealed partial class MainWindow : Window
             VideoInfo info = await FfmpegTool.ProbeAsync(videoPath);
             _currentVideoPath = videoPath;
             _videoInfo = info;
+            _prefs.RememberFile(videoPath);
+            _prefs.TrySave(UserPreferences.DefaultPath);
 
             _timeModel = new PlayerTimeModel(info.EstimatedFrames, info.Fps, info.DurationSeconds);
             _transformer = new ViewportCoordinateTransformer(info.Width, info.Height);
@@ -258,6 +406,9 @@ public sealed partial class MainWindow : Window
             _selectedRegion = null;
             SeguirTargetLabel.Text = "Objetivo: Sin seleccionar";
             BtnExportar.IsEnabled = false;
+            UpdateResultButtons();
+            BtnVistaPrevia.IsEnabled = true;
+            if (PreviewOn) BtnVistaPrevia.IsChecked = false;
 
             // Precargar y mostrar primer cuadro
             await _frameBuffer.PreloadRangeAsync(0, Math.Min(30, info.EstimatedFrames));
@@ -572,8 +723,7 @@ public sealed partial class MainWindow : Window
         // 3. Guía de Reencuadre
         else if (TaskSelector.SelectedIndex == 3)
         {
-            string preset = RbAspect916.IsChecked == true ? "9:16" : (RbAspect11.IsChecked == true ? "1:1" : "4:5");
-            double aspect = OverlayGeometry.AspectRatioFromPreset(preset);
+            double aspect = OverlayGeometry.AspectRatioFromPreset(CurrentAspectPreset());
             UiRect cropVideo = OverlayGeometry.ComputeCropRect(_videoInfo.Width, _videoInfo.Height, aspect);
             UiRect cropView = _transformer.VideoRectToViewport(cropVideo);
 
@@ -607,6 +757,7 @@ public sealed partial class MainWindow : Window
         PanelEstabilizar.Visibility = idx == 4 ? Visibility.Visible : Visibility.Collapsed;
 
         UpdateOverlay();
+        _ = RefreshPreviewAsync();
     }
 
     private void OnSeguirModeChanged(object sender, RoutedEventArgs e)
@@ -620,7 +771,107 @@ public sealed partial class MainWindow : Window
     private void OnAspectChanged(object sender, RoutedEventArgs e)
     {
         UpdateOverlay();
+        _ = RefreshPreviewAsync();
     }
+
+    private void OnFondoModoToggled(object sender, RoutedEventArgs e) => _ = RefreshPreviewAsync();
+
+    private void OnFondoParamChanged(object sender, SelectionChangedEventArgs e) => _ = RefreshPreviewAsync();
+
+    #region Vista previa antes/después
+
+    private async void OnVistaPreviaToggled(object sender, RoutedEventArgs e)
+    {
+        if (PreviewOn && _timeModel is not null)
+        {
+            Pause();
+            await ShowFrameAsync(0);
+        }
+        await RefreshPreviewAsync();
+    }
+
+    /// <summary>
+    /// Con «Después» pulsado, muestra el primer cuadro con la herramienta aplicada (<see cref="FramePreview"/>): el recorte
+    /// del reencuadre al instante; el fondo quitado pidiendo la máscara de ese cuadro al módulo, con la petición anterior cancelada.
+    /// </summary>
+    private async Task RefreshPreviewAsync()
+    {
+        if (BtnVistaPrevia is null || PreviewStatusText is null || TaskSelector is null) return;
+
+        _previewCts?.Cancel();
+        _previewCts = null;
+
+        int taskIdx = TaskSelector.SelectedIndex;
+        bool show = PreviewOn && _frameBuffer is not null && _videoInfo is not null;
+        if (!show || !FramePreview.SupportsPreview(taskIdx))
+        {
+            PreviewStatusText.Text = show ? FramePreview.NotSupportedText : string.Empty;
+            SetPreviewVisible(false);
+            return;
+        }
+
+        byte[]? frame = await _frameBuffer!.GetFrameAsync(0);
+        if (frame is null || !PreviewOn)
+        {
+            SetPreviewVisible(false);
+            return;
+        }
+
+        int w = _videoInfo!.Width;
+        int h = _videoInfo.Height;
+        if (taskIdx == 3)
+        {
+            RenderPreview(FramePreview.CropForAspect(frame, w, h, CurrentAspectPreset()));
+            PreviewStatusText.Text = $"Después: reencuadre {CurrentAspectPreset()} centrado";
+            SetPreviewVisible(true);
+            return;
+        }
+
+        CancellationTokenSource cts = new();
+        _previewCts = cts;
+        PreviewStatusText.Text = "Calculando la vista previa del fondo…";
+        try
+        {
+            byte[] mask = await VisionService.MatteFrameAsync(
+                frame, w, h,
+                quality: ComboCalidadFondo.SelectedIndex == 1 ? "alta" : "normal",
+                device: DeviceName(ComboDeviceFondo.SelectedIndex),
+                cancellationToken: cts.Token);
+            if (cts.IsCancellationRequested || !PreviewOn) return;
+            RenderPreview(FramePreview.ApplyMask(frame, mask, w, h, asMask: SwitchFondoModo.IsOn));
+            PreviewStatusText.Text = SwitchFondoModo.IsOn ? "Después: máscara en grises" : "Después: fondo quitado";
+            SetPreviewVisible(true);
+        }
+        catch (OperationCanceledException)
+        {
+            // Cambió otro parámetro antes de acabar: la petición nueva manda.
+        }
+        catch (Exception ex)
+        {
+            PreviewStatusText.Text = TaskExecutionController.FormatErrorMessage(ex);
+            SetPreviewVisible(false);
+        }
+    }
+
+    private void SetPreviewVisible(bool visible)
+    {
+        PreviewDisplay.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
+        VideoDisplay.Visibility = visible || _videoInfo is null ? Visibility.Collapsed : Visibility.Visible;
+        OverlayCanvas.Visibility = visible ? Visibility.Collapsed : Visibility.Visible;
+    }
+
+    private void RenderPreview(PreviewFrame preview)
+    {
+        if (_previewBitmap is null || _previewBitmap.PixelWidth != preview.Width || _previewBitmap.PixelHeight != preview.Height)
+        {
+            _previewBitmap = new WriteableBitmap(preview.Width, preview.Height);
+            PreviewDisplay.Source = _previewBitmap;
+        }
+        preview.Bgra.CopyTo(_previewBitmap.PixelBuffer);
+        _previewBitmap.Invalidate();
+    }
+
+    #endregion
 
     private async void OnEjecutarClick(object sender, RoutedEventArgs e)
     {
@@ -637,126 +888,227 @@ public sealed partial class MainWindow : Window
             return;
         }
 
+        if (taskIdx is 1 or 2 or 3 && !VisionService.IsModuleInstalled())
+        {
+            ShowModuleMissing();
+            return;
+        }
+
         ClearNotification();
         Pause();
+        SavePreferences();
+
+        // Sin pendientes: con varios en cola se repite la cola entera; si no, el video cargado es la cola.
+        if (!_queue.HasPending)
+        {
+            if (_queue.Count > 1)
+            {
+                _queue.Reset();
+            }
+            else
+            {
+                _queue.Clear();
+                _queue.Enqueue([_currentVideoPath]);
+            }
+        }
 
         CancellationToken ct = _taskController.BeginExecution();
         SetRunningState(true);
 
         Progress<VideoProgress> progress = new(p =>
         {
-            _taskController.ReportProgress(p.Fraction, p.Stage);
+            _queue.ReportProgress(p.Fraction, p.Stage);
+            _taskController.ReportProgress(_queue.OverallFraction, _queue.ProgressText);
             UiProgressInfo info = _taskController.GetProgressInfo();
             TaskProgressBar.Value = info.Fraction * 100.0;
-            TaskProgressText.Text = $"{info.Fraction * 100:0} % · {info.StatusText}";
+            TaskProgressText.Text = info.StatusText;
             TaskTimeText.Text = info.FormattedTime;
+            RefreshQueueList();
         });
 
-        try
+        bool cancelled = false;
+        while (_queue.StartNext() is { } item)
         {
-            switch (taskIdx)
+            RefreshQueueList();
+            try
             {
-                case 0: // Seguir
-                    int patSize = (int)SliderPatternSize.Value;
-                    _followResult = await FollowService.FollowAsync(
-                        _currentVideoPath,
-                        _selectedPoint,
-                        _selectedRegion,
-                        patternSize: patSize,
-                        progress: progress,
-                        cancellationToken: ct);
-                    _taskController.MarkCompleted();
-                    ShowNotification($"Seguimiento completado: {_followResult.Cuadros.Count} cuadros analizados.", InfoBarSeverity.Success);
-                    BtnExportar.IsEnabled = true;
-                    break;
-
-                case 1: // Quitar fondo
-                    bool esMascara = SwitchFondoModo.IsOn;
-                    string extFondo = esMascara ? ".mp4" : ".webm";
-                    string outFondo = System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"rastrear_fondo_{DateTime.Now:HHmmss}{extFondo}");
-                    string formatFondo = esMascara ? "mascara" : "alfa";
-                    string qualityFondo = ComboCalidadFondo.SelectedIndex == 1 ? "alta" : "normal";
-                    string deviceFondo = ComboDeviceFondo.SelectedIndex switch { 1 => "gpu", 2 => "cpu", _ => "auto" };
-
-                    await VisionService.RemoveBackgroundAsync(
-                        _currentVideoPath,
-                        outFondo,
-                        format: formatFondo,
-                        quality: qualityFondo,
-                        device: deviceFondo,
-                        progress: progress,
-                        cancellationToken: ct);
-                    _lastOutputFile = outFondo;
-                    _taskController.MarkCompleted();
-                    ShowNotification($"Fondo procesado con éxito en: {System.IO.Path.GetFileName(outFondo)}", InfoBarSeverity.Success);
-                    BtnExportar.IsEnabled = true;
-                    break;
-
-                case 2: // Detectar
-                    string targetDet = ComboTargetDetectar.SelectedIndex == 1 ? "personas" : "rostros";
-                    string deviceDet = ComboDeviceDetectar.SelectedIndex switch { 1 => "gpu", 2 => "cpu", _ => "auto" };
-
-                    _detectionResult = await VisionService.DetectAsync(
-                        _currentVideoPath,
-                        target: targetDet,
-                        device: deviceDet,
-                        progress: progress,
-                        cancellationToken: ct);
-                    _taskController.MarkCompleted();
-                    ShowNotification($"Detección completada: {_detectionResult.Cuadros.Count} cuadros analizados.", InfoBarSeverity.Success);
-                    BtnExportar.IsEnabled = true;
-                    break;
-
-                case 3: // Reencuadrar
-                    string presetAspect = RbAspect916.IsChecked == true ? "9:16" : (RbAspect11.IsChecked == true ? "1:1" : "4:5");
-                    double targetAspect = OverlayGeometry.AspectRatioFromPreset(presetAspect);
-                    string outReframe = System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"rastrear_reencuadre_{DateTime.Now:HHmmss}.mp4");
-
-                    await VisionService.ReframeAsync(
-                        _currentVideoPath,
-                        outReframe,
-                        targetAspect: targetAspect,
-                        smoothing: SliderSmoothing.Value,
-                        progress: progress,
-                        cancellationToken: ct);
-                    _lastOutputFile = outReframe;
-                    _taskController.MarkCompleted();
-                    ShowNotification($"Reencuadre completado en: {System.IO.Path.GetFileName(outReframe)}", InfoBarSeverity.Success);
-                    BtnExportar.IsEnabled = true;
-                    break;
-
-                case 4: // Estabilizar
-                    string outStab = System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"rastrear_estabilizado_{DateTime.Now:HHmmss}.mp4");
-                    await StabilizeService.StabilizeAsync(
-                        _currentVideoPath,
-                        outStab,
-                        intensity: SliderIntensity.Value,
-                        autoCrop: ChkAutoCrop.IsChecked == true,
-                        progress: progress,
-                        cancellationToken: ct);
-                    _lastOutputFile = outStab;
-                    _taskController.MarkCompleted();
-                    ShowNotification($"Estabilización completada en: {System.IO.Path.GetFileName(outStab)}", InfoBarSeverity.Success);
-                    BtnExportar.IsEnabled = true;
-                    break;
+                string output = await RunToolAsync(item.Path, taskIdx, progress, ct);
+                _queue.MarkDone(output);
+                _lastOutputFile = output;
             }
+            catch (OperationCanceledException)
+            {
+                _queue.MarkCancelled();
+                cancelled = true;
+                break;
+            }
+            catch (VisionModuleMissingException)
+            {
+                // Desapareció entre la comprobación y el arranque: no tiene sentido seguir con la cola.
+                _queue.MarkFailed("falta el módulo de visión");
+                RefreshQueueList();
+                _taskController.MarkFaulted(new RastrearUserException(VisionModuleMissingException.UserMessage(launcherFound: false)));
+                SetRunningState(false);
+                ShowModuleMissing();
+                return;
+            }
+            catch (Exception ex)
+            {
+                _queue.MarkFailed(TaskExecutionController.FormatErrorMessage(ex));
+            }
+            RefreshQueueList();
         }
-        catch (OperationCanceledException)
+
+        if (cancelled)
         {
             _taskController.MarkCancelled();
-            ShowNotification("Operación cancelada por el usuario.", InfoBarSeverity.Informational);
+            string alive = _taskController.LeftAliveAfterCancel.Count == 0
+                ? string.Empty
+                : $" Seguía vivo: {string.Join(", ", _taskController.LeftAliveAfterCancel)}.";
+            ShowNotification($"Operación cancelada por el usuario.{alive} {_queue.Summary}.", InfoBarSeverity.Informational);
         }
-        catch (Exception ex)
+        else
         {
-            _taskController.MarkFaulted(ex);
-            ShowNotification(_taskController.LastError ?? "Error durante la ejecución.", InfoBarSeverity.Error);
+            bool anyFailed = _queue.Items.Any(i => i.State == BatchItemState.Failed);
+            if (anyFailed && _queue.Count == 1)
+            {
+                _taskController.MarkFaulted(new RastrearUserException(_queue.Items[0].Error ?? "Error durante la ejecución."));
+                ShowNotification(_taskController.LastError ?? "Error durante la ejecución.", InfoBarSeverity.Error);
+            }
+            else
+            {
+                _taskController.MarkCompleted();
+                string where = _lastOutputFile is { } o ? $" Resultado en: {System.IO.Path.GetFileName(o)}" : string.Empty;
+                ShowNotification($"{ToolDoneText(taskIdx)}: {_queue.Summary}.{where}", anyFailed ? InfoBarSeverity.Warning : InfoBarSeverity.Success);
+            }
         }
-        finally
-        {
-            SetRunningState(false);
-            UpdateOverlay();
-        }
+
+        BtnExportar.IsEnabled = _followResult is not null || _detectionResult is not null || (_lastOutputFile is not null && File.Exists(_lastOutputFile));
+        UpdateResultButtons();
+        SetRunningState(false);
+        UpdateOverlay();
     }
+
+    private static string ToolDoneText(int taskIdx) => taskIdx switch
+    {
+        0 => "Seguimiento completado",
+        1 => "Fondo procesado",
+        2 => "Detección completada",
+        3 => "Reencuadre completado",
+        _ => "Estabilización completada",
+    };
+
+    /// <summary>
+    /// Ejecuta la herramienta sobre un video y deja el resultado junto a él (<see cref="OutputNaming"/>): CSV del seguimiento,
+    /// JSON de las detecciones o el video procesado. Si es el video cargado, también guarda el resultado para la superposición.
+    /// </summary>
+    private async Task<string> RunToolAsync(string videoPath, int taskIdx, IProgress<VideoProgress> progress, CancellationToken ct)
+    {
+        bool isDisplayed = string.Equals(videoPath, _currentVideoPath, StringComparison.OrdinalIgnoreCase);
+        string output = OutputNaming.OutputPathFor(videoPath, taskIdx, SwitchFondoModo.IsOn);
+
+        switch (taskIdx)
+        {
+            case 0: // Seguir: el mismo punto o región en todos los videos de la cola
+                FollowResult follow = await FollowService.FollowAsync(
+                    videoPath, _selectedPoint, _selectedRegion,
+                    patternSize: (int)SliderPatternSize.Value, progress: progress, cancellationToken: ct);
+                using (StreamWriter sw = new(output))
+                {
+                    FollowService.WriteCsv(follow, sw);
+                }
+                if (isDisplayed) _followResult = follow;
+                break;
+
+            case 1: // Quitar fondo
+                await VisionService.RemoveBackgroundAsync(
+                    videoPath, output,
+                    format: SwitchFondoModo.IsOn ? "mascara" : "alfa",
+                    quality: ComboCalidadFondo.SelectedIndex == 1 ? "alta" : "normal",
+                    device: DeviceName(ComboDeviceFondo.SelectedIndex),
+                    progress: progress, cancellationToken: ct);
+                break;
+
+            case 2: // Detectar
+                DetectionResult detection = await VisionService.DetectAsync(
+                    videoPath,
+                    target: ComboTargetDetectar.SelectedIndex == 1 ? "personas" : "rostros",
+                    device: DeviceName(ComboDeviceDetectar.SelectedIndex),
+                    progress: progress, cancellationToken: ct);
+                await File.WriteAllTextAsync(output, System.Text.Json.JsonSerializer.Serialize(detection, RastrearJsonContext.Default.DetectionResult), ct);
+                if (isDisplayed) _detectionResult = detection;
+                break;
+
+            case 3: // Reencuadrar
+                await VisionService.ReframeAsync(
+                    videoPath, output,
+                    targetAspect: OverlayGeometry.AspectRatioFromPreset(CurrentAspectPreset()),
+                    smoothing: SliderSmoothing.Value,
+                    progress: progress, cancellationToken: ct);
+                break;
+
+            case 4: // Estabilizar
+                await StabilizeService.StabilizeAsync(
+                    videoPath, output,
+                    intensity: SliderIntensity.Value,
+                    autoCrop: ChkAutoCrop.IsChecked == true,
+                    progress: progress, cancellationToken: ct);
+                break;
+        }
+
+        return output;
+    }
+
+    #region Cola de archivos
+
+    private void RefreshQueueList()
+    {
+        bool show = _queue.Count > 1;
+        QueuePanel.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
+        if (!show) return;
+
+        QueueTitle.Text = $"Cola: {_queue.Count} videos";
+        QueueList.Children.Clear();
+        foreach (BatchItem item in _queue.Items)
+        {
+            Grid row = new() { ColumnSpacing = 8 };
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            TextBlock name = new()
+            {
+                Text = item.FileName,
+                FontSize = 12,
+                TextTrimming = TextTrimming.CharacterEllipsis,
+                Foreground = (Brush)Application.Current.Resources[item.State == BatchItemState.Running ? "TextBrush" : "TextMutedBrush"],
+            };
+            TextBlock status = new()
+            {
+                Text = item.StatusText,
+                FontSize = 12,
+                FontFamily = (FontFamily)Application.Current.Resources["MonoFont"],
+                Foreground = (Brush)Application.Current.Resources[item.State switch
+                {
+                    BatchItemState.Done => "AccentTextBrush",
+                    BatchItemState.Running => "TextBrush",
+                    _ => "TextMutedBrush",
+                }],
+            };
+            Grid.SetColumn(status, 1);
+            row.Children.Add(name);
+            row.Children.Add(status);
+            QueueList.Children.Add(row);
+        }
+        BtnVaciarCola.IsEnabled = !_taskController.IsBusy;
+    }
+
+    private void OnVaciarColaClick(object sender, RoutedEventArgs e)
+    {
+        if (_taskController.IsBusy) return;
+        _queue.Clear();
+        RefreshQueueList();
+    }
+
+    #endregion
 
     private async void OnCancelarClick(object sender, RoutedEventArgs e)
     {
@@ -770,6 +1122,9 @@ public sealed partial class MainWindow : Window
         BtnCancelar.IsEnabled = running;
         TaskSelector.IsEnabled = !running;
         BtnElegirVideo.IsEnabled = !running;
+        BtnVaciarCola.IsEnabled = !running;
+        BtnVistaPrevia.IsEnabled = !running && _videoInfo is not null;
+        if (running && PreviewOn) BtnVistaPrevia.IsChecked = false;
 
         TaskProgressBar.Visibility = running ? Visibility.Visible : Visibility.Collapsed;
         TaskTimeText.Visibility = running ? Visibility.Visible : Visibility.Collapsed;
@@ -787,6 +1142,38 @@ public sealed partial class MainWindow : Window
 
     #region Exportación
 
+    private void UpdateResultButtons()
+    {
+        bool has = _lastOutputFile is not null && File.Exists(_lastOutputFile);
+        BtnAbrirCarpeta.IsEnabled = has;
+        BtnCopiarRuta.IsEnabled = has;
+    }
+
+    private void OnAbrirCarpetaClick(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            if (!ResultActions.OpenFolder(_lastOutputFile))
+            {
+                ShowNotification("El resultado ya no está donde se dejó.", InfoBarSeverity.Warning);
+                UpdateResultButtons();
+            }
+        }
+        catch (Exception ex)
+        {
+            ShowNotification(TaskExecutionController.FormatErrorMessage(ex), InfoBarSeverity.Error);
+        }
+    }
+
+    private void OnCopiarRutaClick(object sender, RoutedEventArgs e)
+    {
+        if (_lastOutputFile is null) return;
+        DataPackage package = new();
+        package.SetText(ResultActions.ClipboardText(_lastOutputFile));
+        Clipboard.SetContent(package);
+        ShowNotification($"Ruta copiada: {_lastOutputFile}", InfoBarSeverity.Success);
+    }
+
     private void OnExportarClick(object sender, RoutedEventArgs e)
     {
         int taskIdx = TaskSelector.SelectedIndex;
@@ -795,7 +1182,7 @@ public sealed partial class MainWindow : Window
         {
             if (taskIdx == 0 && _followResult is not null)
             {
-                string? savePath = FileDialogs.SaveSingle(_hwnd, "Guardar seguimiento", "seguimiento.csv", FileDialogs.CsvFilter, FileDialogs.JsonFilter);
+                string? savePath = FileDialogs.SaveSingle(_hwnd, "Guardar seguimiento", "seguimiento.csv", _prefs.LastFolderIfExists, FileDialogs.CsvFilter, FileDialogs.JsonFilter);
                 if (string.IsNullOrEmpty(savePath)) return;
 
                 using StreamWriter sw = new(savePath);
@@ -811,7 +1198,7 @@ public sealed partial class MainWindow : Window
             }
             else if (taskIdx == 2 && _detectionResult is not null)
             {
-                string? savePath = FileDialogs.SaveSingle(_hwnd, "Guardar detecciones", "detecciones.json", FileDialogs.JsonFilter);
+                string? savePath = FileDialogs.SaveSingle(_hwnd, "Guardar detecciones", "detecciones.json", _prefs.LastFolderIfExists, FileDialogs.JsonFilter);
                 if (string.IsNullOrEmpty(savePath)) return;
 
                 string json = System.Text.Json.JsonSerializer.Serialize(_detectionResult, RastrearJsonContext.Default.DetectionResult);
@@ -822,10 +1209,13 @@ public sealed partial class MainWindow : Window
             {
                 string defName = System.IO.Path.GetFileName(_lastOutputFile);
                 string ext = System.IO.Path.GetExtension(_lastOutputFile);
-                string? savePath = FileDialogs.SaveSingle(_hwnd, "Exportar video resultante", defName, (ext.ToUpperInvariant(), $"*{ext}"), FileDialogs.AllFilter);
+                string? savePath = FileDialogs.SaveSingle(_hwnd, "Exportar video resultante", defName, _prefs.LastFolderIfExists, (ext.ToUpperInvariant(), $"*{ext}"), FileDialogs.AllFilter);
                 if (string.IsNullOrEmpty(savePath)) return;
 
                 File.Copy(_lastOutputFile, savePath, overwrite: true);
+                _lastOutputFile = savePath;
+                _prefs.RememberFile(savePath);
+                UpdateResultButtons();
                 ShowNotification($"Video exportado a: {savePath}", InfoBarSeverity.Success);
             }
         }

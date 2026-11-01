@@ -87,3 +87,15 @@ Lo que solo tú puedes juzgar a ojo. Captura de referencia: `docs/capturas/pulid
 6. **Progreso:** al ejecutar, barra con el acento, etapa y «0:12 · quedan ~0:36» a la derecha; al acabar, un tic verde que aparece con un rebote y «Hecho en 0:04». ¿El rebote es agradable o excesivo?
 7. **Ventana:** mínimo 960×600; al cerrar recuerda tamaño, posición y si estaba maximizada (`%LOCALAPPDATA%\Dathinel\Rastrear\ventana.json`). Muévela, ciérrala y vuelve a abrirla; si desconectas un monitor, debe volver a aparecer dentro de la pantalla.
 8. **Teclado:** recorre los controles con Tab: el foco se ve (anillo del sistema) y Espacio activa botones y casillas.
+
+---
+
+## 8. Calidad de vida (31-oct, rama `claude/calidad-de-vida`)
+
+1. **Memoria:** abre un video de una carpeta, cambia a «Reencuadrar» con 1:1 y suavizado alto, cierra y vuelve a abrir: la herramienta y sus parámetros son los mismos y «Elegir video…» se abre en esa carpeta (`%LOCALAPPDATA%\Dathinel\Rastrear\preferencias.json`).
+2. **Soltar en cualquier parte:** arrastra un video sobre la cabecera o el panel derecho, no solo sobre el visor. Suelta tres a la vez: aparece la cola bajo el reproductor con «pendiente» en cada uno; «Ejecutar» los procesa uno tras otro («Archivo 2 de 3 · 40 % · …») y deja `clip-fondo.webm`, `clip-seguimiento.csv`… junto a cada video. ¿Se entiende el estado de cada archivo? ¿Sobra «Vaciar»?
+3. **Cancelar:** con «Quitar fondo» a medio camino pulsa «Cancelar» (o `Esc`) y mira el Administrador de tareas: no debe quedar `ffmpeg.exe` ni `Rodaje.Module.Vision.exe`. El aviso dice si algo siguió vivo.
+4. **Después:** con «Reencuadrar», pulsa «Después» y cambia entre 9:16, 1:1 y 4:5: el visor muestra el recorte al instante. Con «Quitar fondo», tarda lo que tarde el módulo con un cuadro y muestra el sujeto sobre el tablero (o la máscara en grises). ¿El tablero se ve bien en los dos temas? Con «Seguir» el botón explica que no hay vista previa.
+5. **Resultado:** al acabar, «Abrir carpeta» abre el Explorador con el archivo seleccionado y «Copiar ruta» deja la ruta completa en el portapapeles (pégala en el Ejecutar de Windows).
+6. **Atajos:** `Ctrl+O` abre el diálogo, `Ctrl+Enter` ejecuta (solo con video cargado), `Esc` cancela (solo mientras corre). Las descripciones emergentes de los botones los muestran.
+7. **Sin módulo:** renombra la carpeta de `modulo-vision` y pulsa «Ejecutar» con «Detectar»: el aviso dice qué falta y para qué, sin rutas, y el botón «Abrir el Lanzador» aparece solo si `Lanzador.exe` está en `%LOCALAPPDATA%\Dathinel\Lanzador` (o donde apunte `RASTREAR_LANZADOR`). **Daniel:** si el Lanzador se instala en otro sitio, hay que añadir la ruta a `LauncherLocator.Candidates`.

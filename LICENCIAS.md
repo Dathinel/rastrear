@@ -11,6 +11,7 @@ Qué lleva Rastrear y con qué licencia. Ningún binario ni modelo de terceros v
 | SDK de .NET 10 y runtime de Native AOT | MIT | `.entorno\`, con huella SHA-512 |
 | Windows App SDK 2.5.1 (WinUI 3): `Microsoft.WindowsAppSDK.WinUI` 2.3.9, `.Foundation` 2.3.12, `.InteractiveExperiences` 2.1.9 | Términos de licencia de software de Microsoft para el Windows App SDK (no MIT); detalle y pendiente para el abogado en el `LICENCIAS.md` de Rodaje | Unas 240 DLL, `.pri`, `.winmd` y carpetas de idioma (unos 55 MB sin comprimir) junto a `Rastrear.App.exe` en el zip |
 | Microsoft.Web.WebView2 (dependencia de WinUI) | Propia de Microsoft, de tipo BSD de 3 cláusulas | `Microsoft.Web.WebView2.Core.dll` y `WebView2Loader.dll` en el zip |
+| TerraFX.Interop.Windows 10.0.26100.6 (declaraciones de la API de Windows para los diálogos de archivo y la DPI) | MIT | Se compila dentro de `Rastrear.App.exe`; ninguna DLL aparte |
 | FFmpeg, compilación LGPL de Rodaje | LGPL v3 | `.entorno\ffmpeg`, con huella SHA-256; se distribuye como DLL y ejecutables sin renombrar |
 | ONNX Runtime con DirectML | MIT | Dentro de modulo-vision |
 

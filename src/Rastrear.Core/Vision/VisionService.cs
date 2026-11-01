@@ -89,10 +89,29 @@ public static class VisionService
             }
         }
 
-        throw new RastrearUserException(
-            "No se encontró el módulo de visión (Rodaje.Module.Vision.exe). Rutas probadas:\n  " + string.Join("\n  ", tried) +
-            "\nInstala «modulo-vision» con el Lanzador, pasa --modulo <ruta> o define la variable RASTREAR_MODULOS.");
+        throw new VisionModuleMissingException(tried);
     }
+
+    /// <summary>Si el módulo está instalado (lo que mira <see cref="FindModule(string?)"/>), sin lanzar.</summary>
+    public static bool IsModuleInstalled()
+    {
+        try
+        {
+            FindModule();
+            return true;
+        }
+        catch (VisionModuleMissingException)
+        {
+            return false;
+        }
+    }
+
+    /// <summary>Apunta el módulo en <see cref="ChildProcessRegistry"/> para que «Cancelar» lo mate si no sale solo.</summary>
+    private static ChildProcessRegistry.Registration TrackModule(ModuleProcess process) => ChildProcessRegistry.Track(
+        "módulo de visión",
+        process.Kill,
+        () => process.Exited.IsCompleted,
+        async timeout => await Task.WhenAny(process.Exited, Task.Delay(timeout)).ConfigureAwait(false) == process.Exited);
 
     private static void EnsureDotnetEnvironment()
     {
@@ -155,6 +174,7 @@ public static class VisionService
         }
 
         await using (process.ConfigureAwait(false))
+        using (TrackModule(process))
         {
             using Process decoder = FfmpegTool.StartDecoder(videoPath, ffmpeg);
             try
@@ -306,6 +326,7 @@ public static class VisionService
         }
 
         await using (process.ConfigureAwait(false))
+        using (TrackModule(process))
         {
             using Process decoder = FfmpegTool.StartDecoder(inputVideo, ffmpeg);
             using Process encoder = FfmpegTool.StartEncoder(outputVideo, info.Width, info.Height, info.Fps, outFormat, ffmpeg);
@@ -440,6 +461,69 @@ public static class VisionService
         }
     }
 
+    /// <summary>
+    /// Máscara (un byte por píxel, 255 = sujeto) de un solo cuadro BGRA, para la vista previa de «Quitar fondo»:
+    /// arranca el módulo, procesa el cuadro con sesión nueva y lo cierra.
+    /// </summary>
+    public static async Task<byte[]> MatteFrameAsync(
+        byte[] bgra,
+        int width,
+        int height,
+        string quality = "normal",
+        string device = "auto",
+        string? moduleExePath = null,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(bgra);
+        long inputBytes = (long)width * height * 4;
+        long maskBytes = (long)width * height;
+        if (bgra.Length < inputBytes)
+        {
+            throw new ArgumentException("El cuadro no tiene los bytes de su tamaño.", nameof(bgra));
+        }
+
+        string moduleExe = FindModule(moduleExePath);
+        EnsureDotnetEnvironment();
+
+        ModuleProcess process;
+        try
+        {
+            process = await ModuleProcess.StartAsync(
+                moduleExe,
+                options: new ModuleClientOptions { App = "rastrear" },
+                cancellationToken: cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException and not RastrearUserException)
+        {
+            throw new RastrearModuleException($"No se pudo iniciar el proceso del módulo de visión ({moduleExe}): {ex.Message}", ex);
+        }
+
+        await using (process.ConfigureAwait(false))
+        using (TrackModule(process))
+        {
+            SharedMemoryRegion region = process.Client.CreateRegion(inputBytes + maskBytes);
+            bgra.AsSpan(0, (int)inputBytes).CopyTo(region.GetSpan(0, inputBytes));
+            List<SharedBufferRef> buffers =
+            [
+                region.Describe(0, inputBytes, new VideoLayout(width, height, width * 4, PixelFormats.Bgra8)),
+                region.Describe(inputBytes, maskBytes, new VideoLayout(width, height, width, PixelFormats.Gray8)),
+            ];
+
+            byte[] paramBytes = JsonSerializer.SerializeToUtf8Bytes(
+                new MattingParameters(quality == "alta" ? "alta" : "normal", "rastrear-vista-previa", true, device == "cpu" ? "cpu" : "gpu"),
+                RastrearJsonContext.Default.MattingParameters);
+            using JsonDocument paramDoc = JsonDocument.Parse(paramBytes);
+
+            await process.Client.InvokeAsync(
+                "quitar-fondo",
+                paramDoc.RootElement.Clone(),
+                buffers: buffers,
+                cancellationToken: cancellationToken).ConfigureAwait(false);
+
+            return region.GetSpan(buffers[1]).ToArray();
+        }
+    }
+
     public static async Task<ReframeOutput> ReframeAsync(
         string inputVideo,
         string outputVideo,
@@ -490,6 +574,7 @@ public static class VisionService
 
         ReframeOutput reframeOutput;
         await using (process.ConfigureAwait(false))
+        using (TrackModule(process))
         {
             ReframeParameters parameters = new(
                 Aspecto: targetAspect,

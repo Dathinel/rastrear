@@ -95,6 +95,7 @@ public sealed class PlayerFrameBuffer : IAsyncDisposable, IDisposable
 
         using Process proc = new() { StartInfo = psi };
         proc.Start();
+        ChildProcessRegistry.TrackUntilExit(proc, "ffmpeg (precarga)");
         Stream stdout = proc.StandardOutput.BaseStream;
         int loaded = 0;
 
@@ -141,6 +142,7 @@ public sealed class PlayerFrameBuffer : IAsyncDisposable, IDisposable
 
         using Process proc = new() { StartInfo = psi };
         proc.Start();
+        ChildProcessRegistry.TrackUntilExit(proc, "ffmpeg (cuadro)");
         Stream stdout = proc.StandardOutput.BaseStream;
 
         byte[] frame = new byte[_info.FrameBytesBgra];

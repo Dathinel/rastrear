@@ -5,7 +5,14 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     Title="Rastrear">
 
-    <Grid Background="{ThemeResource WindowBrush}">
+    <!-- Se puede soltar un video (o varios: cola) en cualquier parte de la ventana -->
+    <Grid Background="{ThemeResource WindowBrush}" AllowDrop="True" DragOver="OnVideoDragOver" Drop="OnVideoDrop">
+        <!-- Atajos: Ctrl+O abrir, Ctrl+Enter empezar, Esc cancelar (KeyboardShortcuts decide cuándo valen) -->
+        <Grid.KeyboardAccelerators>
+            <KeyboardAccelerator Key="O" Modifiers="Control" Invoked="OnShortcutInvoked" />
+            <KeyboardAccelerator Key="Enter" Modifiers="Control" Invoked="OnShortcutInvoked" />
+            <KeyboardAccelerator Key="Escape" Invoked="OnShortcutInvoked" />
+        </Grid.KeyboardAccelerators>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
@@ -38,7 +45,7 @@
 
             <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center" Spacing="12">
                 <HyperlinkButton Content="Acerca de" Padding="4,2" FontSize="12" Foreground="{ThemeResource TextMutedBrush}" Click="OnAcercaDeClick" />
-                <Button x:Name="BtnElegirVideo" Content="Elegir video…" Click="OnElegirVideoClick" />
+                <Button x:Name="BtnElegirVideo" Content="Elegir video…" Click="OnElegirVideoClick" ToolTipService.ToolTip="Ctrl+O" />
             </StackPanel>
         </Grid>
 
@@ -69,11 +76,11 @@
                 <Grid.RowDefinitions>
                     <RowDefinition Height="*" />
                     <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
 
                 <!-- Visor de video con superposición: oscuro en los dos temas -->
-                <Border Grid.Row="0" Background="{StaticResource ViewportBrush}" BorderBrush="{StaticResource ViewportBorderBrush}" BorderThickness="1" CornerRadius="8"
-                        AllowDrop="True" DragOver="OnVideoDragOver" Drop="OnVideoDrop">
+                <Border Grid.Row="0" Background="{StaticResource ViewportBrush}" BorderBrush="{StaticResource ViewportBorderBrush}" BorderThickness="1" CornerRadius="8">
                     <Grid x:Name="ViewportContainer" SizeChanged="OnViewportSizeChanged">
                         <!-- Estado vacío: mira con trayectoria y qué hacer -->
                         <StackPanel x:Name="EmptyStatePrompt" HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="16">
@@ -91,6 +98,9 @@
 
                         <!-- Imagen del cuadro de video -->
                         <Image x:Name="VideoDisplay" Stretch="Uniform" HorizontalAlignment="Center" VerticalAlignment="Center" />
+
+                        <!-- «Después»: el primer cuadro con la herramienta aplicada (recorte del reencuadre, fondo quitado) -->
+                        <Image x:Name="PreviewDisplay" Stretch="Uniform" HorizontalAlignment="Center" VerticalAlignment="Center" Visibility="Collapsed" />
 
                         <!-- Lienzo de superposición transparente encima de la imagen -->
                         <Canvas x:Name="OverlayCanvas" Background="Transparent"
@@ -123,10 +133,30 @@
                                 <Button x:Name="BtnStepForward" Content="⏭" Click="OnStepForwardClick" ToolTipService.ToolTip="Cuadro siguiente" />
                             </StackPanel>
 
-                            <TextBlock x:Name="TimeText" Grid.Column="1" HorizontalAlignment="Right" VerticalAlignment="Center"
-                                       FontFamily="{StaticResource MonoFont}" FontSize="13" Foreground="{ThemeResource TextMutedBrush}" Text="00:00.00 / 00:00.00 (cuadro 0/0)" />
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="12">
+                                <TextBlock x:Name="PreviewStatusText" VerticalAlignment="Center" FontSize="12" Foreground="{ThemeResource TextMutedBrush}" TextTrimming="CharacterEllipsis" MaxWidth="320" />
+                                <ToggleButton x:Name="BtnVistaPrevia" Content="Después" FontSize="12" Padding="10,4" IsEnabled="False"
+                                              ToolTipService.ToolTip="Vista previa del primer cuadro con los parámetros actuales (antes ↔ después)"
+                                              Checked="OnVistaPreviaToggled" Unchecked="OnVistaPreviaToggled" />
+                                <TextBlock x:Name="TimeText" VerticalAlignment="Center"
+                                           FontFamily="{StaticResource MonoFont}" FontSize="13" Foreground="{ThemeResource TextMutedBrush}" Text="00:00.00 / 00:00.00 (cuadro 0/0)" />
+                            </StackPanel>
                         </Grid>
                     </Grid>
+                </Border>
+
+                <!-- Cola de videos soltados: estado y progreso por archivo -->
+                <Border x:Name="QueuePanel" Grid.Row="2" Background="{ThemeResource PanelBrush}" BorderBrush="{ThemeResource PanelBorderBrush}" BorderThickness="1" CornerRadius="8"
+                        Padding="16,8" Visibility="Collapsed">
+                    <StackPanel Spacing="4">
+                        <Grid>
+                            <TextBlock x:Name="QueueTitle" FontFamily="{StaticResource TitleFont}" FontSize="14" FontWeight="SemiBold" Foreground="{ThemeResource TextBrush}" VerticalAlignment="Center" />
+                            <Button x:Name="BtnVaciarCola" Content="Vaciar" FontSize="12" Padding="8,2" HorizontalAlignment="Right" Click="OnVaciarColaClick" />
+                        </Grid>
+                        <ScrollViewer MaxHeight="120" VerticalScrollBarVisibility="Auto">
+                            <StackPanel x:Name="QueueList" Spacing="2" />
+                        </ScrollViewer>
+                    </StackPanel>
                 </Border>
             </Grid>
 
@@ -163,12 +193,12 @@
 
                         <StackPanel x:Name="PanelQuitarFondo" Spacing="8" Visibility="Collapsed">
                             <ToggleSwitch x:Name="SwitchFondoModo" Header="Modo de salida"
-                                          OffContent="Video con alfa (WebM/ProRes)" OnContent="Máscara en grises (MP4)" />
-                            <ComboBox x:Name="ComboCalidadFondo" Header="Calidad" HorizontalAlignment="Stretch">
+                                          OffContent="Video con alfa (WebM/ProRes)" OnContent="Máscara en grises (MP4)" Toggled="OnFondoModoToggled" />
+                            <ComboBox x:Name="ComboCalidadFondo" Header="Calidad" HorizontalAlignment="Stretch" SelectionChanged="OnFondoParamChanged">
                                 <ComboBoxItem Content="Normal (MODNet)" IsSelected="True" />
                                 <ComboBoxItem Content="Alta (BiRefNet lite)" />
                             </ComboBox>
-                            <ComboBox x:Name="ComboDeviceFondo" Header="Dispositivo" HorizontalAlignment="Stretch">
+                            <ComboBox x:Name="ComboDeviceFondo" Header="Dispositivo" HorizontalAlignment="Stretch" SelectionChanged="OnFondoParamChanged">
                                 <ComboBoxItem Content="Automático" IsSelected="True" />
                                 <ComboBoxItem Content="GPU (DirectML)" />
                                 <ComboBoxItem Content="CPU" />
@@ -218,8 +248,8 @@
                                     <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
                                 <Button x:Name="BtnEjecutar" Content="Ejecutar" Style="{StaticResource AccentButtonStyle}"
-                                        HorizontalAlignment="Stretch" Click="OnEjecutarClick" />
-                                <Button x:Name="BtnCancelar" Grid.Column="1" Content="Cancelar" IsEnabled="False" Click="OnCancelarClick" />
+                                        HorizontalAlignment="Stretch" Click="OnEjecutarClick" ToolTipService.ToolTip="Ctrl+Enter" />
+                                <Button x:Name="BtnCancelar" Grid.Column="1" Content="Cancelar" IsEnabled="False" Click="OnCancelarClick" ToolTipService.ToolTip="Esc" />
                             </Grid>
 
                             <ProgressBar x:Name="TaskProgressBar" Minimum="0" Maximum="100" Value="0" Visibility="Collapsed" />
@@ -254,6 +284,18 @@
                         </StackPanel>
 
                         <Button x:Name="BtnExportar" Content="Exportar resultado…" HorizontalAlignment="Stretch" IsEnabled="False" Click="OnExportarClick" />
+
+                        <!-- El archivo resultante: abrir su carpeta (seleccionado en el Explorador) y copiar la ruta -->
+                        <Grid ColumnSpacing="8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Button x:Name="BtnAbrirCarpeta" Content="Abrir carpeta" HorizontalAlignment="Stretch" IsEnabled="False" Click="OnAbrirCarpetaClick"
+                                    ToolTipService.ToolTip="Abre la carpeta del resultado con el archivo seleccionado" />
+                            <Button x:Name="BtnCopiarRuta" Grid.Column="1" Content="Copiar ruta" HorizontalAlignment="Stretch" IsEnabled="False" Click="OnCopiarRutaClick"
+                                    ToolTipService.ToolTip="Copia la ruta completa del resultado al portapapeles" />
+                        </Grid>
                     </StackPanel>
                 </ScrollViewer>
             </Border>
