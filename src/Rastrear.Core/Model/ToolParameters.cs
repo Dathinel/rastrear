@@ -13,6 +13,12 @@ public static class ToolParameters
     public static readonly string[] AspectPresets = ["9:16", "1:1", "4:5"];
     public static readonly string[] FollowModes = ["punto", "region"];
 
+    /// <summary>«auto», «gpu» o «cpu» según el índice (0 → «auto», 1 → «gpu», 2 → «cpu», otro → «auto»).</summary>
+    public static string DeviceFromIndex(int index) => index switch { 1 => "gpu", 2 => "cpu", _ => "auto" };
+
+    /// <summary>«normal» o «alta» según el índice (1 → «alta», otro → «normal»).</summary>
+    public static string QualityFromIndex(int index) => index == 1 ? "alta" : "normal";
+
     /// <summary>«auto», «gpu» o «cpu»; cualquier otra cosa es «auto».</summary>
     public static string NormalizeDevice(string? device) => Pick(Devices, device);
 

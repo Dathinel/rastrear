@@ -16,6 +16,7 @@
 - La cola solo admite herramientas sin objetivo: con «Seguir» (que pide un clic en cada video) al soltar varios se abre solo el primero y, al cambiar a «Seguir» con varios en cola, queda solo el video cargado; la ventana lo dice en cada caso (`BatchQueue.SupportsTool`, `Enqueue(paths, toolIndex)`, `TrimToTool`).
 - «Exportar resultado…» copia el archivo resultante donde se elija y el resultado sigue donde se dejó: «Abrir carpeta» y «Copiar ruta» no cambian de archivo. El seguimiento sigue pudiendo exportarse como JSON.
 - Por dentro: `ChildProcessRegistry` sube a `Rastrear.Core`; `ToolParameters` (dispositivo, calidad, objetivo, aspecto, modo) normaliza en un solo sitio lo que guardan las preferencias y lo que recibe el módulo; `VisionService.StartModuleAsync` es el único arranque del módulo; `AtomicFile` escribe `preferencias.json` y `ventana.json` por temporal y Move; las pruebas con carpeta temporal comparten `TemporaryFolderTest` y la de cancelar arranca un solo proceso sin hijos.
+- Arreglos de la revisión de bloque (#4): cierre esperado de la sesión de vista previa antes de ejecutar y al abrir otro video (sin procesos duplicados ni huérfanos), robustez frente a carreras al soltar «Después» y mapeo centralizado de calidad y dispositivo en `ToolParameters`.
 
 ## [1.0.0] - 2026-10-24
 

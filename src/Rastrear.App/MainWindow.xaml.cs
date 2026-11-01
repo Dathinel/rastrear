@@ -292,7 +292,7 @@ public sealed partial class MainWindow : Window
         p.FollowMode = RbSeguirRegion.IsChecked == true ? "region" : "punto";
         p.FollowPatternSize = (int)SliderPatternSize.Value;
         p.BackgroundMask = SwitchFondoModo.IsOn;
-        p.BackgroundQuality = ComboCalidadFondo.SelectedIndex == 1 ? "alta" : "normal";
+        p.BackgroundQuality = ToolParameters.QualityFromIndex(ComboCalidadFondo.SelectedIndex);
         p.BackgroundDevice = DeviceName(ComboDeviceFondo.SelectedIndex);
         p.DetectTarget = ComboTargetDetectar.SelectedIndex == 1 ? "personas" : "rostros";
         p.DetectDevice = DeviceName(ComboDeviceDetectar.SelectedIndex);
@@ -311,7 +311,7 @@ public sealed partial class MainWindow : Window
     }
 
     private static int DeviceIndex(string device) => device switch { "gpu" => 1, "cpu" => 2, _ => 0 };
-    private static string DeviceName(int index) => index switch { 1 => "gpu", 2 => "cpu", _ => "auto" };
+    private static string DeviceName(int index) => ToolParameters.DeviceFromIndex(index);
     private string CurrentAspectPreset() => RbAspect916.IsChecked == true ? "9:16" : (RbAspect11.IsChecked == true ? "1:1" : "4:5");
 
     #endregion
@@ -554,6 +554,7 @@ public sealed partial class MainWindow : Window
             UpdateResultButtons();
             BtnVistaPrevia.IsEnabled = true;
             if (PreviewOn) BtnVistaPrevia.IsChecked = false;
+            await ClosePreviewSessionAsync();
 
             // Precargar y mostrar primer cuadro
             await _frameBuffer.PreloadRangeAsync(0, Math.Min(30, info.EstimatedFrames));
@@ -952,11 +953,14 @@ public sealed partial class MainWindow : Window
     {
         if (BtnVistaPrevia is null || PreviewStatusText is null || TaskSelector is null) return;
 
-        _previewCts?.Cancel();
-        _previewCts = null;
         if (!PreviewOn)
         {
-            _ = ClosePreviewSessionAsync();
+            await ClosePreviewSessionAsync();
+        }
+        else
+        {
+            _previewCts?.Cancel();
+            _previewCts = null;
         }
 
         int taskIdx = TaskSelector.SelectedIndex;
@@ -993,8 +997,8 @@ public sealed partial class MainWindow : Window
             _previewSession ??= VisionService.CreateSession();
             byte[] mask = await VisionService.MatteFrameAsync(
                 _previewSession, frame, w, h,
-                quality: ComboCalidadFondo.SelectedIndex == 1 ? "alta" : "normal",
-                device: DeviceName(ComboDeviceFondo.SelectedIndex),
+                quality: ToolParameters.QualityFromIndex(ComboCalidadFondo.SelectedIndex),
+                device: ToolParameters.DeviceFromIndex(ComboDeviceFondo.SelectedIndex),
                 cancellationToken: cts.Token);
             if (cts.IsCancellationRequested || !PreviewOn) return;
             RenderPreview(FramePreview.ApplyMask(frame, mask, w, h, asMask: SwitchFondoModo.IsOn));
@@ -1012,9 +1016,11 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    /// <summary>Cierra el módulo de la vista previa (al soltar «Después», al cerrar la ventana); la próxima máscara arrancaría otro.</summary>
+    /// <summary>Cierra el módulo de la vista previa (al soltar «Después», al cerrar la ventana, antes de ejecutar o al abrir otro video); la próxima máscara arrancaría otro.</summary>
     private async Task ClosePreviewSessionAsync()
     {
+        _previewCts?.Cancel();
+        _previewCts = null;
         if (_previewSession is not { } session) return;
         _previewSession = null;
         try
@@ -1071,6 +1077,7 @@ public sealed partial class MainWindow : Window
         ClearNotification();
         Pause();
         SavePreferences();
+        await ClosePreviewSessionAsync();
 
         // Al reanudar, el cancelado a medias se repite. Sin pendientes: con varios en cola se repite la cola entera; si no, el video cargado es la cola.
         if (_queue.Count > 1) _queue.RequeueCancelled();
@@ -1165,6 +1172,10 @@ public sealed partial class MainWindow : Window
         UpdateResultButtons();
         SetRunningState(false);
         UpdateOverlay();
+        if (PreviewOn)
+        {
+            _ = RefreshPreviewAsync();
+        }
     }
 
     /// <summary>«junto a cada video» o «en <carpeta>», para los avisos.</summary>
@@ -1222,8 +1233,8 @@ public sealed partial class MainWindow : Window
                 await VisionService.RemoveBackgroundAsync(
                     videoPath, output,
                     format: SwitchFondoModo.IsOn ? "mascara" : "alfa",
-                    quality: ComboCalidadFondo.SelectedIndex == 1 ? "alta" : "normal",
-                    device: DeviceName(ComboDeviceFondo.SelectedIndex),
+                    quality: ToolParameters.QualityFromIndex(ComboCalidadFondo.SelectedIndex),
+                    device: ToolParameters.DeviceFromIndex(ComboDeviceFondo.SelectedIndex),
                     progress: progress, cancellationToken: ct);
                 break;
 
