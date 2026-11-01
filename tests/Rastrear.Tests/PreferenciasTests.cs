@@ -17,6 +17,7 @@ public sealed class PreferenciasTests : IDisposable
         UserPreferences prefs = new() { ToolIndex = 3, ReframeAspect = "1:1", ReframeSmoothing = 0.7, FollowPatternSize = 61, BackgroundMask = true, DetectTarget = "personas", StabilizeAutoCrop = false };
         prefs.RememberFile(video);
         prefs.Save(Ruta);
+        Assert.False(File.Exists(Ruta + ".tmp")); // Escritura atómica: temporal + Move
 
         UserPreferences leidas = UserPreferences.Load(Ruta);
         Assert.Equal(_raiz, leidas.LastFolder);
