@@ -1,17 +1,17 @@
 using System.Diagnostics;
+using Rastrear.Core;
 using Rastrear.Core.Ui;
-using Rastrear.Core.Video;
 
 namespace Rastrear.Tests;
 
 public class ColaTests
 {
+    private static string V(params string[] parts) => Path.Combine([Path.GetTempPath(), "v", .. parts]);
+
     [Fact]
     public void Cola_progreso_por_archivo_y_global_y_resumen()
     {
         BatchQueue cola = new();
-        string v = Path.Combine(Path.GetTempPath(), "v");
-        string V(string nombre) => Path.Combine(v, nombre);
         Assert.Equal(3, cola.Enqueue([V("a.mp4"), V("b.mov"), V("A.MP4"), V("c.mkv"), ""]));
         Assert.Equal(0.0, cola.OverallFraction);
         Assert.Equal(string.Empty, cola.ProgressText);
@@ -56,7 +56,7 @@ public class ColaTests
     public void Cancelar_deja_los_pendientes_para_reanudar_y_un_solo_archivo_no_numera()
     {
         BatchQueue cola = new();
-        cola.Enqueue([@"C:\v\a.mp4", @"C:\v\b.mp4"]);
+        cola.Enqueue([V("a.mp4"), V("b.mp4")]);
         cola.StartNext();
         cola.MarkCancelled();
         Assert.True(cola.HasPending);
@@ -66,7 +66,7 @@ public class ColaTests
         Assert.Equal("a.mp4", cola.StartNext()!.FileName); // El cancelado se repite
 
         BatchQueue una = new();
-        una.Enqueue([@"C:\v\solo.mp4"]);
+        una.Enqueue([V("solo.mp4")]);
         una.StartNext();
         una.ReportProgress(0.25, "Quitando fondo");
         Assert.Equal("25 % · Quitando fondo", una.ProgressText);
@@ -76,8 +76,50 @@ public class ColaTests
     [Fact]
     public void Al_soltar_solo_entran_los_videos_sin_repetidos()
     {
-        List<string> videos = BatchQueue.FilterDroppedPaths([@"C:\v\a.MP4", @"C:\v\notas.txt", @"C:\v\b.mkv", @"C:\v\a.mp4", @"C:\v\foto.png"]);
-        Assert.Equal([@"C:\v\a.MP4", @"C:\v\b.mkv"], videos);
+        List<string> videos = BatchQueue.FilterDroppedPaths([V("a.MP4"), V("notas.txt"), V("b.mkv"), V("a.mp4"), V("foto.png")]);
+        Assert.Equal([V("a.MP4"), V("b.mkv")], videos);
+    }
+
+    [Fact]
+    public void Seguir_necesita_clic_y_no_admite_cola()
+    {
+        Assert.False(BatchQueue.SupportsTool(0)); // Seguir
+        for (int tool = 1; tool < UserPreferences.ToolNames.Length; tool++)
+        {
+            Assert.True(BatchQueue.SupportsTool(tool));
+        }
+
+        // Al soltar tres con «Seguir» solo entra el primero; con cualquier otra, los tres
+        BatchQueue cola = new();
+        Assert.Equal(1, cola.Enqueue([V("a.mp4"), V("b.mp4"), V("c.mp4")], toolIndex: 0));
+        Assert.Equal("a.mp4", cola.Items[0].FileName);
+        cola.Clear();
+        Assert.Equal(3, cola.Enqueue([V("a.mp4"), V("b.mp4"), V("c.mp4")], toolIndex: 1));
+        Assert.Equal(1, cola.Enqueue(["", V("d.mp4")], toolIndex: 0)); // Los vacíos no cuentan como «el primero»
+        Assert.Equal(4, cola.Count);
+
+        // Al pasar a «Seguir» con varios en cola queda solo el video cargado (b); con otra herramienta no se toca nada
+        Assert.False(cola.TrimToTool(2, V("b.mp4")));
+        Assert.Equal(4, cola.Count);
+        Assert.True(cola.TrimToTool(0, V("B.MP4")));
+        Assert.Single(cola.Items);
+        Assert.Equal("b.mp4", cola.Items[0].FileName);
+        Assert.False(cola.TrimToTool(0, V("b.mp4"))); // Ya no hay nada que quitar
+
+        // Sin video cargado en la cola se queda el primero; con uno corriendo no se recorta
+        cola.Clear();
+        cola.Enqueue([V("a.mp4"), V("b.mp4")]);
+        cola.StartNext();
+        Assert.Throws<InvalidOperationException>(() => cola.TrimToTool(0, null));
+        cola.MarkDone(null);
+        Assert.True(cola.TrimToTool(0, null));
+        Assert.Equal("a.mp4", cola.Items[0].FileName);
+        Assert.Null(cola.Current);
+
+        string aviso = BatchQueue.NotQueuedText(3, "a.mp4");
+        Assert.Contains("«a.mp4»", aviso);
+        Assert.Contains("2 no entraron", aviso);
+        Assert.Contains("Seguir", BatchQueue.TrimmedText);
     }
 
     [Fact]
@@ -98,53 +140,50 @@ public class ColaTests
     [Fact]
     public async Task Cancelar_mata_los_procesos_de_su_ejecucion_y_no_los_de_otra()
     {
-        // Un proceso que dormiría 30 s: en Windows «ping» con espera, en Linux «sleep».
-        static Process Dormido()
+        // Un solo proceso real, sin hijos (matar el árbol enumera procesos y es lo que tarda): «ping» con espera en
+        // Windows, «sleep» en Linux. Lo ajeno es una entrada falsa: fuera de toda ejecución el registro ni la apunta.
+        bool ajenoMuerto = false;
+        Assert.Null(ChildProcessRegistry.Current);
+        using (ChildProcessRegistry.Track("ajeno", () => ajenoMuerto = true, () => ajenoMuerto, _ => Task.FromResult(true)))
         {
+            TaskExecutionController controlador = new();
+            CancellationToken ct = controlador.BeginExecution();
+            Assert.NotNull(controlador.Processes);
+            Assert.Same(controlador.Processes, ChildProcessRegistry.Current);
+
             ProcessStartInfo psi = OperatingSystem.IsWindows()
-                ? new ProcessStartInfo("cmd.exe", "/c ping -n 31 127.0.0.1 >nul")
+                ? new ProcessStartInfo("ping.exe", "-n 31 127.0.0.1")
                 : new ProcessStartInfo("sleep", "30");
             psi.UseShellExecute = false;
             psi.CreateNoWindow = true;
-            return Process.Start(psi)!;
-        }
-
-        // Fuera de toda ejecución no se apunta nada (el reproductor, otras pruebas en paralelo)
-        using Process ajeno = Dormido();
-        Assert.Null(ChildProcessRegistry.Current);
-        ChildProcessRegistry.TrackUntilExit(ajeno, "ajeno");
-
-        TaskExecutionController controlador = new();
-        CancellationToken ct = controlador.BeginExecution();
-        Assert.NotNull(controlador.Processes);
-        Assert.Same(controlador.Processes, ChildProcessRegistry.Current);
-
-        using Process propio = Dormido();
-        bool killed = false;
-        try
-        {
-            ChildProcessRegistry.TrackUntilExit(propio, "ffmpeg (prueba)");
-            using (ChildProcessRegistry.Track("módulo (prueba)", () => killed = true, () => killed, _ => Task.FromResult(killed)))
+            psi.RedirectStandardOutput = true;
+            using Process propio = Process.Start(psi)!;
+            bool moduloMuerto = false;
+            try
             {
-                Assert.Equal(2, controlador.Processes.LiveCount);
+                ChildProcessRegistry.TrackUntilExit(propio, "ffmpeg (prueba)");
+                using (ChildProcessRegistry.Track("módulo (prueba)", () => moduloMuerto = true, () => moduloMuerto, _ => Task.FromResult(moduloMuerto)))
+                {
+                    Assert.Equal(2, controlador.Processes.LiveCount);
 
-                Stopwatch sw = Stopwatch.StartNew();
-                bool cancelado = await controlador.CancelAsync(TimeSpan.FromSeconds(10));
-                sw.Stop();
+                    Stopwatch sw = Stopwatch.StartNew();
+                    bool cancelado = await controlador.CancelAsync(TimeSpan.FromSeconds(5));
+                    sw.Stop();
 
-                Assert.True(cancelado);
-                Assert.True(ct.IsCancellationRequested);
-                Assert.True(propio.HasExited, "ffmpeg (prueba) seguía vivo tras cancelar");
-                Assert.True(killed);
-                Assert.Empty(controlador.LeftAliveAfterCancel);
-                Assert.Equal(0, controlador.Processes.LiveCount);
-                Assert.True(sw.Elapsed < TimeSpan.FromSeconds(10));
-                Assert.False(ajeno.HasExited, "cancelar mató un proceso de otra ejecución");
+                    Assert.True(cancelado);
+                    Assert.True(ct.IsCancellationRequested);
+                    Assert.True(propio.HasExited, "ffmpeg (prueba) seguía vivo tras cancelar");
+                    Assert.True(moduloMuerto);
+                    Assert.Empty(controlador.LeftAliveAfterCancel);
+                    Assert.Equal(0, controlador.Processes.LiveCount);
+                    Assert.True(sw.Elapsed < TimeSpan.FromSeconds(5), $"cancelar tardó {sw.ElapsedMilliseconds} ms");
+                    Assert.False(ajenoMuerto, "cancelar mató un proceso de otra ejecución");
+                }
             }
-        }
-        finally
-        {
-            try { ajeno.Kill(); } catch (InvalidOperationException) { }
+            finally
+            {
+                try { if (!propio.HasExited) propio.Kill(); } catch (InvalidOperationException) { }
+            }
         }
     }
 }

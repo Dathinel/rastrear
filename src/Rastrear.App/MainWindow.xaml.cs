@@ -23,6 +23,7 @@ using Rastrear.Core.Tracking;
 using Rastrear.Core.Ui;
 using Rastrear.Core.Video;
 using Rastrear.Core.Vision;
+using Rodaje.Modules.Protocol;
 using Windows.Graphics;
 using Windows.UI;
 using WinRT;
@@ -71,9 +72,10 @@ public sealed partial class MainWindow : Window
     // Cola de videos soltados: se procesan uno tras otro con la misma herramienta
     private readonly BatchQueue _queue = new();
 
-    // Vista previa «después» del primer cuadro
+    // Vista previa «después» del primer cuadro: el módulo de visión queda vivo mientras «Después» esté pulsado
     private WriteableBitmap? _previewBitmap;
     private CancellationTokenSource? _previewCts;
+    private ModuleSession<ModuleProcess>? _previewSession;
     private bool PreviewOn => BtnVistaPrevia.IsChecked == true;
 
     // Ventana: mínimo en DIP y últimos límites sin maximizar (lo que se guarda en ventana.json)
@@ -103,10 +105,13 @@ public sealed partial class MainWindow : Window
         Closed += async (_, _) =>
         {
             // Cancelar arranca el kill de ffmpeg y el módulo antes de guardar; se espera al final para no dejarlos vivos.
+            // El módulo de la vista previa se cierra a la vez, con un tope: la ventana no se queda esperando a un módulo colgado.
             Task cancel = _taskController.CancelAsync();
+            Task preview = ClosePreviewSessionAsync();
             SavePlacement();
             SavePreferences();
             await cancel;
+            await ModuleProcess.WaitForCloseAsync(preview, TimeSpan.FromSeconds(3));
         };
 
         _playbackTimer.Tick += OnPlaybackTick;
@@ -253,6 +258,31 @@ public sealed partial class MainWindow : Window
         ChkAutoCrop.IsChecked = p.StabilizeAutoCrop;
 
         SwitchAvisarVersion.IsOn = p.NotifyNewVersion;
+        ApplyOutputFolder();
+    }
+
+    /// <summary>La carpeta de salida no es un control con valor: se muestra y se guarda tal cual está en las preferencias.</summary>
+    private void ApplyOutputFolder()
+    {
+        OutputFolderText.Text = _prefs.OutputFolderText;
+        ToolTipService.SetToolTip(OutputFolderText, _prefs.OutputFolder is { } f ? f : "Cada resultado se deja en la carpeta de su video");
+        BtnCarpetaSalidaJunto.IsEnabled = _prefs.OutputFolder is not null;
+    }
+
+    private void OnElegirCarpetaSalidaClick(object sender, RoutedEventArgs e)
+    {
+        string? folder = FileDialogs.ChooseFolder(_hwnd, "Carpeta de salida");
+        if (string.IsNullOrEmpty(folder)) return;
+        _prefs.OutputFolder = UserPreferences.NormalizeFolder(folder);
+        ApplyOutputFolder();
+        SavePreferences();
+    }
+
+    private void OnCarpetaSalidaJuntoClick(object sender, RoutedEventArgs e)
+    {
+        _prefs.OutputFolder = null;
+        ApplyOutputFolder();
+        SavePreferences();
     }
 
     private void CollectPreferences()
@@ -456,12 +486,17 @@ public sealed partial class MainWindow : Window
         }
 
         _queue.Clear();
-        _queue.Enqueue(videos);
+        int queued = _queue.Enqueue(videos, TaskSelector.SelectedIndex);
         RefreshQueueList();
         await OpenVideoFileAsync(videos[0]);
-        if (videos.Count > 1)
+        if (videos.Count > 1 && queued == 1)
         {
-            ShowNotification($"{videos.Count} videos en cola. «Ejecutar» aplica la herramienta a todos, uno tras otro, con el resultado junto a cada video.", InfoBarSeverity.Informational);
+            // «Seguir» pide un clic en cada video: la cola no la admite
+            ShowNotification(BatchQueue.NotQueuedText(videos.Count, System.IO.Path.GetFileName(videos[0])), InfoBarSeverity.Warning);
+        }
+        else if (videos.Count > 1)
+        {
+            ShowNotification($"{videos.Count} videos en cola. «Ejecutar» aplica la herramienta a todos, uno tras otro, con el resultado {WhereResultsGo()}.", InfoBarSeverity.Informational);
         }
     }
 
@@ -866,6 +901,13 @@ public sealed partial class MainWindow : Window
         PanelReencuadrar.Visibility = idx == 3 ? Visibility.Visible : Visibility.Collapsed;
         PanelEstabilizar.Visibility = idx == 4 ? Visibility.Visible : Visibility.Collapsed;
 
+        // Con «Seguir» (que pide un clic) la cola se queda solo con el video cargado
+        if (!_taskController.IsBusy && _queue.TrimToTool(idx, _currentVideoPath))
+        {
+            RefreshQueueList();
+            ShowNotification(BatchQueue.TrimmedText, InfoBarSeverity.Informational);
+        }
+
         UpdateOverlay();
         _ = RefreshPreviewAsync();
     }
@@ -902,7 +944,9 @@ public sealed partial class MainWindow : Window
 
     /// <summary>
     /// Con «Después» pulsado, muestra el primer cuadro con la herramienta aplicada (<see cref="FramePreview"/>): el recorte
-    /// del reencuadre al instante; el fondo quitado pidiendo la máscara de ese cuadro al módulo, con la petición anterior cancelada.
+    /// del reencuadre al instante; el fondo quitado pidiendo la máscara de ese cuadro al módulo, con la petición anterior
+    /// cancelada. El módulo (<see cref="_previewSession"/>) se arranca con la primera máscara y sigue vivo, aunque se cambie
+    /// de herramienta o de parámetro, hasta que se suelta «Después».
     /// </summary>
     private async Task RefreshPreviewAsync()
     {
@@ -910,6 +954,10 @@ public sealed partial class MainWindow : Window
 
         _previewCts?.Cancel();
         _previewCts = null;
+        if (!PreviewOn)
+        {
+            _ = ClosePreviewSessionAsync();
+        }
 
         int taskIdx = TaskSelector.SelectedIndex;
         bool show = PreviewOn && _frameBuffer is not null && _videoInfo is not null;
@@ -942,8 +990,9 @@ public sealed partial class MainWindow : Window
         PreviewStatusText.Text = "Calculando la vista previa del fondo…";
         try
         {
+            _previewSession ??= VisionService.CreateSession();
             byte[] mask = await VisionService.MatteFrameAsync(
-                frame, w, h,
+                _previewSession, frame, w, h,
                 quality: ComboCalidadFondo.SelectedIndex == 1 ? "alta" : "normal",
                 device: DeviceName(ComboDeviceFondo.SelectedIndex),
                 cancellationToken: cts.Token);
@@ -960,6 +1009,21 @@ public sealed partial class MainWindow : Window
         {
             PreviewStatusText.Text = TaskExecutionController.FormatErrorMessage(ex);
             SetPreviewVisible(false);
+        }
+    }
+
+    /// <summary>Cierra el módulo de la vista previa (al soltar «Después», al cerrar la ventana); la próxima máscara arrancaría otro.</summary>
+    private async Task ClosePreviewSessionAsync()
+    {
+        if (_previewSession is not { } session) return;
+        _previewSession = null;
+        try
+        {
+            await session.DisposeAsync();
+        }
+        catch (Exception ex) when (ex is ModuleException or IOException or InvalidOperationException)
+        {
+            // Un módulo que no cierra bien: ya no se usa; el Job Object y «Cancelar» cubren lo que quede.
         }
     }
 
@@ -1103,6 +1167,9 @@ public sealed partial class MainWindow : Window
         UpdateOverlay();
     }
 
+    /// <summary>«junto a cada video» o «en <carpeta>», para los avisos.</summary>
+    private string WhereResultsGo() => _prefs.OutputFolder is { } f ? $"en {f}" : "junto a cada video";
+
     private static string ToolDoneText(int taskIdx) => taskIdx switch
     {
         0 => "Seguimiento completado",
@@ -1119,10 +1186,12 @@ public sealed partial class MainWindow : Window
     private async Task<string> RunToolAsync(string videoPath, int taskIdx, IProgress<VideoProgress> progress, CancellationToken ct)
     {
         bool isDisplayed = string.Equals(videoPath, _currentVideoPath, StringComparison.OrdinalIgnoreCase);
-        string output = OutputNaming.OutputPathFor(videoPath, taskIdx, SwitchFondoModo.IsOn);
+        string output = OutputNaming.OutputPathFor(videoPath, taskIdx, SwitchFondoModo.IsOn, outputFolder: _prefs.OutputFolder);
 
         try
         {
+            // La carpeta de salida elegida puede haberse ido (una unidad extraíble): el error queda en ese archivo de la cola
+            Directory.CreateDirectory(System.IO.Path.GetDirectoryName(output)!);
             await RunToolCoreAsync(videoPath, output, taskIdx, isDisplayed, progress, ct);
         }
         catch
@@ -1250,6 +1319,8 @@ public sealed partial class MainWindow : Window
         TaskSelector.IsEnabled = !running;
         BtnElegirVideo.IsEnabled = !running;
         BtnVaciarCola.IsEnabled = !running;
+        BtnElegirCarpetaSalida.IsEnabled = !running;
+        BtnCarpetaSalidaJunto.IsEnabled = !running && _prefs.OutputFolder is not null;
         BtnVistaPrevia.IsEnabled = !running && _videoInfo is not null;
         if (running && PreviewOn) BtnVistaPrevia.IsChecked = false;
 
@@ -1301,50 +1372,78 @@ public sealed partial class MainWindow : Window
         ShowNotification($"Ruta copiada: {_lastOutputFile}", InfoBarSeverity.Success);
     }
 
+    /// <summary>Copia el resultado donde se eligió; elegir el propio resultado no es un error, solo no hay nada que copiar.</summary>
+    private static void CopyResult(string result, string savePath)
+    {
+        if (string.Equals(System.IO.Path.GetFullPath(result), System.IO.Path.GetFullPath(savePath), StringComparison.OrdinalIgnoreCase)) return;
+        File.Copy(result, savePath, overwrite: true);
+    }
+
+    /// <summary>
+    /// «Exportar resultado…»: una copia del archivo resultante donde se elija. El resultado sigue junto al video (o en la
+    /// carpeta de salida): «Abrir carpeta» y «Copiar ruta» no cambian. El seguimiento se puede exportar también como JSON
+    /// (se escribe desde el resultado en memoria); si el archivo ya no está, el seguimiento y las detecciones se vuelven a
+    /// escribir desde memoria.
+    /// </summary>
     private void OnExportarClick(object sender, RoutedEventArgs e)
     {
         int taskIdx = TaskSelector.SelectedIndex;
+        string? result = _lastOutputFile is { } r && File.Exists(r) ? r : null;
 
         try
         {
+            string? savePath;
             if (taskIdx == 0 && _followResult is not null)
             {
-                string? savePath = FileDialogs.SaveSingle(_hwnd, "Guardar seguimiento", "seguimiento.csv", _prefs.LastFolderIfExists, FileDialogs.CsvFilter, FileDialogs.JsonFilter);
+                savePath = FileDialogs.SaveSingle(_hwnd, "Exportar seguimiento", System.IO.Path.GetFileName(result ?? "seguimiento.csv"), _prefs.LastFolderIfExists, FileDialogs.CsvFilter, FileDialogs.JsonFilter);
                 if (string.IsNullOrEmpty(savePath)) return;
 
-                using StreamWriter sw = new(savePath);
                 if (savePath.EndsWith(".json", StringComparison.OrdinalIgnoreCase))
                 {
+                    using StreamWriter sw = new(savePath);
                     FollowService.WriteJson(_followResult, sw);
+                }
+                else if (result is not null)
+                {
+                    CopyResult(result, savePath);
                 }
                 else
                 {
+                    using StreamWriter sw = new(savePath);
                     FollowService.WriteCsv(_followResult, sw);
                 }
-                ShowNotification($"Seguimiento exportado a: {savePath}", InfoBarSeverity.Success);
             }
             else if (taskIdx == 2 && _detectionResult is not null)
             {
-                string? savePath = FileDialogs.SaveSingle(_hwnd, "Guardar detecciones", "detecciones.json", _prefs.LastFolderIfExists, FileDialogs.JsonFilter);
+                savePath = FileDialogs.SaveSingle(_hwnd, "Exportar detecciones", System.IO.Path.GetFileName(result ?? "detecciones.json"), _prefs.LastFolderIfExists, FileDialogs.JsonFilter);
                 if (string.IsNullOrEmpty(savePath)) return;
 
-                string json = System.Text.Json.JsonSerializer.Serialize(_detectionResult, RastrearJsonContext.Default.DetectionResult);
-                File.WriteAllText(savePath, json);
-                ShowNotification($"Detecciones exportadas a: {savePath}", InfoBarSeverity.Success);
+                if (result is not null)
+                {
+                    CopyResult(result, savePath);
+                }
+                else
+                {
+                    File.WriteAllText(savePath, System.Text.Json.JsonSerializer.Serialize(_detectionResult, RastrearJsonContext.Default.DetectionResult));
+                }
             }
-            else if (_lastOutputFile is not null && File.Exists(_lastOutputFile))
+            else if (result is not null)
             {
-                string defName = System.IO.Path.GetFileName(_lastOutputFile);
-                string ext = System.IO.Path.GetExtension(_lastOutputFile);
-                string? savePath = FileDialogs.SaveSingle(_hwnd, "Exportar video resultante", defName, _prefs.LastFolderIfExists, (ext.ToUpperInvariant(), $"*{ext}"), FileDialogs.AllFilter);
+                string ext = System.IO.Path.GetExtension(result);
+                savePath = FileDialogs.SaveSingle(_hwnd, "Exportar resultado", System.IO.Path.GetFileName(result), _prefs.LastFolderIfExists, (ext.ToUpperInvariant(), $"*{ext}"), FileDialogs.AllFilter);
                 if (string.IsNullOrEmpty(savePath)) return;
 
-                File.Copy(_lastOutputFile, savePath, overwrite: true);
-                _lastOutputFile = savePath;
-                _prefs.RememberFile(savePath);
-                UpdateResultButtons();
-                ShowNotification($"Video exportado a: {savePath}", InfoBarSeverity.Success);
+                CopyResult(result, savePath);
             }
+            else
+            {
+                ShowNotification("El resultado ya no está donde se dejó.", InfoBarSeverity.Warning);
+                UpdateResultButtons();
+                return;
+            }
+
+            _prefs.RememberFile(savePath);
+            ShowNotification($"Copia exportada a: {savePath}", InfoBarSeverity.Success);
         }
         catch (Exception ex)
         {

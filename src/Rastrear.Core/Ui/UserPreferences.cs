@@ -5,9 +5,9 @@ using Rastrear.Core.Model;
 namespace Rastrear.Core.Ui;
 
 /// <summary>
-/// Lo que la ventana recuerda entre sesiones: la última carpeta de la que se abrió un video, la última herramienta
-/// y los parámetros de cada una. Se guarda en %LOCALAPPDATA%\Dathinel\Rastrear\preferencias.json; si el archivo
-/// falta o está roto se parte de los valores por defecto.
+/// Lo que la ventana recuerda entre sesiones: la última carpeta de la que se abrió un video, la carpeta de salida, la
+/// última herramienta y los parámetros de cada una. Se guarda en %LOCALAPPDATA%\Dathinel\Rastrear\preferencias.json;
+/// si el archivo falta o está roto se parte de los valores por defecto.
 /// </summary>
 public sealed class UserPreferences
 {
@@ -18,6 +18,8 @@ public sealed class UserPreferences
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Dathinel", "Rastrear", "preferencias.json");
 
     [JsonPropertyName("ultimaCarpeta")] public string? LastFolder { get; set; }
+    /// <summary>Dónde se dejan los resultados; null: junto a cada video (<see cref="OutputNaming"/>).</summary>
+    [JsonPropertyName("carpetaSalida")] public string? OutputFolder { get; set; }
     [JsonPropertyName("herramienta")] public string Tool { get; set; } = ToolNames[0];
 
     [JsonPropertyName("seguirModo")] public string FollowMode { get; set; } = "punto";
@@ -55,6 +57,12 @@ public sealed class UserPreferences
     [JsonIgnore]
     public string? LastFolderIfExists => LastFolder is { Length: > 0 } f && Directory.Exists(f) ? f : null;
 
+    /// <summary>Texto para la ventana: la carpeta de salida o «Junto al video».</summary>
+    public const string OutputNextToVideoText = "Junto al video";
+
+    [JsonIgnore]
+    public string OutputFolderText => OutputFolder ?? OutputNextToVideoText;
+
     /// <summary>Apunta la carpeta del archivo abierto o guardado.</summary>
     public void RememberFile(string filePath)
     {
@@ -69,23 +77,27 @@ public sealed class UserPreferences
     public UserPreferences Normalize()
     {
         if (Array.IndexOf(ToolNames, Tool) < 0) Tool = ToolNames[0];
-        if (FollowMode is not ("punto" or "region")) FollowMode = "punto";
+        FollowMode = ToolParameters.NormalizeFollowMode(FollowMode);
         FollowPatternSize = Math.Clamp(FollowPatternSize, 21, 81);
-        if (BackgroundQuality is not ("normal" or "alta")) BackgroundQuality = "normal";
-        BackgroundDevice = NormalizeDevice(BackgroundDevice);
-        if (DetectTarget is not ("rostros" or "personas")) DetectTarget = "rostros";
-        DetectDevice = NormalizeDevice(DetectDevice);
-        if (ReframeAspect is not ("9:16" or "1:1" or "4:5")) ReframeAspect = "9:16";
-        ReframeSmoothing = ClampFinite(ReframeSmoothing, 0.1, 0.9, 0.5);
-        StabilizeIntensity = ClampFinite(StabilizeIntensity, 0.1, 1.0, 0.5);
+        BackgroundQuality = ToolParameters.NormalizeQuality(BackgroundQuality);
+        BackgroundDevice = ToolParameters.NormalizeDevice(BackgroundDevice);
+        DetectTarget = ToolParameters.NormalizeDetectTarget(DetectTarget);
+        DetectDevice = ToolParameters.NormalizeDevice(DetectDevice);
+        ReframeAspect = ToolParameters.NormalizeAspectPreset(ReframeAspect);
+        ReframeSmoothing = ToolParameters.ClampFinite(ReframeSmoothing, 0.1, 0.9, 0.5);
+        StabilizeIntensity = ToolParameters.ClampFinite(StabilizeIntensity, 0.1, 1.0, 0.5);
         if (string.IsNullOrWhiteSpace(DismissedVersion)) DismissedVersion = null;
+        OutputFolder = NormalizeFolder(OutputFolder);
         return this;
     }
 
-    private static string NormalizeDevice(string device) => device is "auto" or "gpu" or "cpu" ? device : "auto";
-
-    private static double ClampFinite(double value, double min, double max, double fallback) =>
-        double.IsFinite(value) ? Math.Clamp(value, min, max) : fallback;
+    /// <summary>Una ruta absoluta sin espacios alrededor; vacía, en blanco o relativa, null (junto al video).</summary>
+    public static string? NormalizeFolder(string? folder)
+    {
+        if (string.IsNullOrWhiteSpace(folder)) return null;
+        string trimmed = folder.Trim();
+        return Path.IsPathRooted(trimmed) ? Path.TrimEndingDirectorySeparator(trimmed) : null;
+    }
 
     public static UserPreferences Load(string path)
     {
@@ -105,14 +117,9 @@ public sealed class UserPreferences
         return new UserPreferences();
     }
 
-    public void Save(string path)
-    {
-        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-        // Temporal y luego Move: un apagón a medio escribir no deja el JSON roto.
-        string tmp = path + ".tmp";
-        File.WriteAllText(tmp, JsonSerializer.Serialize(this, RastrearJsonContext.Default.UserPreferences));
-        File.Move(tmp, path, overwrite: true);
-    }
+    /// <summary>Escritura atómica (<see cref="AtomicFile"/>): un apagón a medio escribir no deja el JSON roto.</summary>
+    public void Save(string path) =>
+        AtomicFile.WriteAllText(path, JsonSerializer.Serialize(this, RastrearJsonContext.Default.UserPreferences));
 
     /// <summary>Guarda sin fallar: sin permiso o con el disco lleno, la próxima vez se parte de lo anterior.</summary>
     public bool TrySave(string path)

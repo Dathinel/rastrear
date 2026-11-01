@@ -3,10 +3,8 @@ using Rastrear.Core.Vision;
 
 namespace Rastrear.Tests;
 
-public sealed class AtajosYLanzadorTests : IDisposable
+public sealed class AtajosYLanzadorTests : TemporaryFolderTest
 {
-    private readonly string _raiz = Path.Combine(Path.GetTempPath(), "rastrear-lanzador-" + Guid.NewGuid().ToString("N"));
-
     [Fact]
     public void Atajos_solo_cuando_tienen_sentido()
     {
@@ -28,42 +26,31 @@ public sealed class AtajosYLanzadorTests : IDisposable
     public void Lanzador_por_variable_o_en_LOCALAPPDATA_y_mensaje_claro_si_falta_el_modulo()
     {
         Dictionary<string, string?> env = [];
-        string local = Path.Combine(_raiz, "local");
+        string local = PathOf("local");
         Assert.Null(LauncherLocator.Find(k => env.GetValueOrDefault(k), local));
 
-        string enApp = Path.Combine(local, "Dathinel", "Lanzador", "app", LauncherLocator.ExeName);
-        Directory.CreateDirectory(Path.GetDirectoryName(enApp)!);
-        File.WriteAllText(enApp, "");
+        string enApp = Touch("local", "Dathinel", "Lanzador", "app", LauncherLocator.ExeName);
         Assert.Equal(enApp, LauncherLocator.Find(k => env.GetValueOrDefault(k), local));
 
-        string directo = Path.Combine(local, "Dathinel", "Lanzador", LauncherLocator.ExeName);
-        File.WriteAllText(directo, "");
+        string directo = Touch("local", "Dathinel", "Lanzador", LauncherLocator.ExeName);
         Assert.Equal(directo, LauncherLocator.Find(k => env.GetValueOrDefault(k), local));
 
         // Donde lo deja de verdad el instalador del Lanzador ({userpf}\Lanzador) gana a las suposiciones
-        string instalado = Path.Combine(local, "Programs", "Lanzador", LauncherLocator.ExeName);
-        Directory.CreateDirectory(Path.GetDirectoryName(instalado)!);
-        File.WriteAllText(instalado, "");
+        string instalado = Touch("local", "Programs", "Lanzador", LauncherLocator.ExeName);
         Assert.Equal(instalado, LauncherLocator.Find(k => env.GetValueOrDefault(k), local));
 
-        string propio = Path.Combine(_raiz, "propio");
-        Directory.CreateDirectory(propio);
-        File.WriteAllText(Path.Combine(propio, LauncherLocator.ExeName), "");
+        string propio = PathOf("propio");
+        Touch("propio", LauncherLocator.ExeName);
         env["RASTREAR_LANZADOR"] = propio;
         Assert.Equal(Path.Combine(propio, LauncherLocator.ExeName), LauncherLocator.Find(k => env.GetValueOrDefault(k), local));
 
-        VisionModuleMissingException ex = new([Path.Combine(_raiz, "x", VisionService.ModuleExe)]);
+        VisionModuleMissingException ex = new([PathOf("x", VisionService.ModuleExe)]);
         string con = VisionModuleMissingException.UserMessage(launcherFound: true);
         string sin = VisionModuleMissingException.UserMessage(launcherFound: false);
         Assert.Contains("modulo-vision", con);
         Assert.Contains("Lanzador", con);
-        Assert.DoesNotContain(_raiz, con); // Sin rutas: las rutas van en ex.Message, para la Cli
+        Assert.DoesNotContain(Root, con); // Sin rutas: las rutas van en ex.Message, para la Cli
         Assert.Contains("RASTREAR_MODULOS", sin);
         Assert.Contains("Rutas probadas", ex.Message);
-    }
-
-    public void Dispose()
-    {
-        try { Directory.Delete(_raiz, recursive: true); } catch (IOException) { }
     }
 }

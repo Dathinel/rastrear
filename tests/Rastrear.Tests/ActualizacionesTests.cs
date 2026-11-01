@@ -3,9 +3,8 @@ using Rastrear.Core.Ui;
 namespace Rastrear.Tests;
 
 /// <summary>Aviso de versión nueva: parseo del JSON de GitHub, comparación con la app, 24 h y «Más tarde», sin red.</summary>
-public sealed class ActualizacionesTests : IDisposable
+public sealed class ActualizacionesTests : TemporaryFolderTest
 {
-    private readonly string _raiz = Path.Combine(Path.GetTempPath(), "rastrear-actualiz-" + Guid.NewGuid().ToString("N"));
     private static readonly Version Actual = new(1, 0, 0);
     private static readonly DateTimeOffset Ahora = new(2026, 11, 1, 12, 0, 0, TimeSpan.Zero);
 
@@ -167,8 +166,7 @@ public sealed class ActualizacionesTests : IDisposable
     [Fact]
     public void Las_preferencias_guardan_el_interruptor_la_consulta_y_la_descartada()
     {
-        Directory.CreateDirectory(_raiz);
-        string ruta = Path.Combine(_raiz, "preferencias.json");
+        string ruta = PathOf("preferencias.json");
 
         UserPreferences porDefecto = UserPreferences.Load(ruta);
         Assert.True(porDefecto.NotifyNewVersion);
@@ -188,10 +186,5 @@ public sealed class ActualizacionesTests : IDisposable
         Assert.Null(viejas.LastUpdateCheck);
         Assert.Null(viejas.DismissedVersion);
         Assert.Equal("detectar", viejas.Tool);
-    }
-
-    public void Dispose()
-    {
-        try { Directory.Delete(_raiz, recursive: true); } catch (IOException) { }
     }
 }

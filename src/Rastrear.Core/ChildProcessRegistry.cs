@@ -1,6 +1,6 @@
 using System.Diagnostics;
 
-namespace Rastrear.Core.Video;
+namespace Rastrear.Core;
 
 /// <summary>
 /// Los procesos hijos vivos (ffmpeg, ffprobe y el módulo de visión) de cada ejecución, para que «Cancelar» no deje

@@ -47,9 +47,7 @@ public sealed record WindowPlacement(
         }
     }
 
-    public void Save(string path)
-    {
-        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-        File.WriteAllText(path, JsonSerializer.Serialize(this, RastrearJsonContext.Default.WindowPlacement));
-    }
+    /// <summary>Escritura atómica (<see cref="AtomicFile"/>): un apagón a medio escribir no deja el JSON roto.</summary>
+    public void Save(string path) =>
+        AtomicFile.WriteAllText(path, JsonSerializer.Serialize(this, RastrearJsonContext.Default.WindowPlacement));
 }

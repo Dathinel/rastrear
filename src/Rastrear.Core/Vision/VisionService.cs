@@ -113,6 +113,31 @@ public static class VisionService
         () => process.Exited.IsCompleted,
         async timeout => await Task.WhenAny(process.Exited, Task.Delay(timeout)).ConfigureAwait(false) == process.Exited);
 
+    /// <summary>Arranca <c>Rodaje.Module.Vision.exe</c> con la identidad de Rastrear; un fallo de arranque es <see cref="RastrearModuleException"/>.</summary>
+    public static async Task<ModuleProcess> StartModuleAsync(string moduleExe, CancellationToken cancellationToken = default)
+    {
+        EnsureDotnetEnvironment();
+        try
+        {
+            return await ModuleProcess.StartAsync(
+                moduleExe,
+                options: new ModuleClientOptions { App = "rastrear" },
+                cancellationToken: cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException and not RastrearUserException)
+        {
+            throw new RastrearModuleException($"No se pudo iniciar el proceso del módulo de visión ({moduleExe}): {ex.Message}", ex);
+        }
+    }
+
+    /// <summary>
+    /// Un módulo vivo entre llamadas para la vista previa de «Después» (<see cref="ModuleSession{TModule}"/>): se arranca
+    /// en la primera llamada (y ahí se busca, <see cref="FindModule(string?)"/>) y se cierra al desechar la sesión.
+    /// </summary>
+    public static ModuleSession<ModuleProcess> CreateSession(string? moduleExePath = null) => new(
+        ct => StartModuleAsync(FindModule(moduleExePath), ct),
+        p => p.Exited.IsCompleted);
+
     private static void EnsureDotnetEnvironment()
     {
         if (string.IsNullOrEmpty(Environment.GetEnvironmentVariable("DOTNET_ROOT")))
@@ -149,29 +174,17 @@ public static class VisionService
         IProgress<VideoProgress>? progress = null,
         CancellationToken cancellationToken = default)
     {
-        if (target is not ("rostros" or "personas"))
+        if (!ToolParameters.IsDetectTarget(target))
         {
             throw new RastrearUserException($"Objetivo de detección inválido: «{target}». Use «rostros» o «personas».");
         }
 
         string moduleExe = FindModule(moduleExePath);
         string ffmpeg = FfmpegTool.FindFfmpeg(ffmpegPath);
-        EnsureDotnetEnvironment();
 
         VideoInfo info = await FfmpegTool.ProbeAsync(videoPath, ffmpeg, cancellationToken).ConfigureAwait(false);
 
-        ModuleProcess process;
-        try
-        {
-            process = await ModuleProcess.StartAsync(
-                moduleExe,
-                options: new ModuleClientOptions { App = "rastrear" },
-                cancellationToken: cancellationToken).ConfigureAwait(false);
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException and not RastrearUserException)
-        {
-            throw new RastrearModuleException($"No se pudo iniciar el proceso del módulo de visión ({moduleExe}): {ex.Message}", ex);
-        }
+        ModuleProcess process = await StartModuleAsync(moduleExe, cancellationToken).ConfigureAwait(false);
 
         await using (process.ConfigureAwait(false))
         using (TrackModule(process))
@@ -187,7 +200,7 @@ public static class VisionService
                 List<byte[]> batch = [];
                 int frameIdx = 0;
 
-                string computeDevice = device == "cpu" ? "cpu" : "gpu";
+                string computeDevice = ToolParameters.ComputeDevice(device);
                 byte[] paramBytes = JsonSerializer.SerializeToUtf8Bytes(
                     new VisionDetectParameters(target, computeDevice),
                     RastrearJsonContext.Default.VisionDetectParameters);
@@ -287,7 +300,6 @@ public static class VisionService
     {
         string moduleExe = FindModule(moduleExePath);
         string ffmpeg = FfmpegTool.FindFfmpeg(ffmpegPath);
-        EnsureDotnetEnvironment();
 
         VideoInfo info = await FfmpegTool.ProbeAsync(inputVideo, ffmpeg, cancellationToken).ConfigureAwait(false);
 
@@ -312,18 +324,7 @@ public static class VisionService
             Directory.CreateDirectory(outDir);
         }
 
-        ModuleProcess process;
-        try
-        {
-            process = await ModuleProcess.StartAsync(
-                moduleExe,
-                options: new ModuleClientOptions { App = "rastrear" },
-                cancellationToken: cancellationToken).ConfigureAwait(false);
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException and not RastrearUserException)
-        {
-            throw new RastrearModuleException($"No se pudo iniciar el proceso del módulo de visión ({moduleExe}): {ex.Message}", ex);
-        }
+        ModuleProcess process = await StartModuleAsync(moduleExe, cancellationToken).ConfigureAwait(false);
 
         await using (process.ConfigureAwait(false))
         using (TrackModule(process))
@@ -341,8 +342,8 @@ public static class VisionService
                 long maskBytes = (long)info.Width * info.Height;
                 int pixelCount = info.Width * info.Height;
 
-                string computeDevice = device == "cpu" ? "cpu" : "gpu";
-                string qual = quality == "alta" ? "alta" : "normal";
+                string computeDevice = ToolParameters.ComputeDevice(device);
+                string qual = ToolParameters.NormalizeQuality(quality);
 
                 List<byte[]> batch = [];
                 int frameIdx = 0;
@@ -463,7 +464,8 @@ public static class VisionService
 
     /// <summary>
     /// Máscara (un byte por píxel, 255 = sujeto) de un solo cuadro BGRA, para la vista previa de «Quitar fondo»:
-    /// arranca el módulo, procesa el cuadro con sesión nueva y lo cierra.
+    /// arranca el módulo, procesa el cuadro con sesión nueva y lo cierra. La ventana usa la variante con
+    /// <see cref="ModuleSession{TModule}"/>, que deja el módulo vivo entre cuadros.
     /// </summary>
     public static async Task<byte[]> MatteFrameAsync(
         byte[] bgra,
@@ -474,53 +476,65 @@ public static class VisionService
         string? moduleExePath = null,
         CancellationToken cancellationToken = default)
     {
-        ArgumentNullException.ThrowIfNull(bgra);
-        long inputBytes = (long)width * height * 4;
-        long maskBytes = (long)width * height;
-        if (bgra.Length < inputBytes)
-        {
-            throw new ArgumentException("El cuadro no tiene los bytes de su tamaño.", nameof(bgra));
-        }
-
+        CheckFrame(bgra, width, height);
         string moduleExe = FindModule(moduleExePath);
-        EnsureDotnetEnvironment();
-
-        ModuleProcess process;
-        try
-        {
-            process = await ModuleProcess.StartAsync(
-                moduleExe,
-                options: new ModuleClientOptions { App = "rastrear" },
-                cancellationToken: cancellationToken).ConfigureAwait(false);
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException and not RastrearUserException)
-        {
-            throw new RastrearModuleException($"No se pudo iniciar el proceso del módulo de visión ({moduleExe}): {ex.Message}", ex);
-        }
+        ModuleProcess process = await StartModuleAsync(moduleExe, cancellationToken).ConfigureAwait(false);
 
         await using (process.ConfigureAwait(false))
         using (TrackModule(process))
         {
-            using SharedMemoryRegion region = process.Client.CreateRegion(inputBytes + maskBytes);
-            bgra.AsSpan(0, (int)inputBytes).CopyTo(region.GetSpan(0, inputBytes));
-            List<SharedBufferRef> buffers =
-            [
-                region.Describe(0, inputBytes, new VideoLayout(width, height, width * 4, PixelFormats.Bgra8)),
-                region.Describe(inputBytes, maskBytes, new VideoLayout(width, height, width, PixelFormats.Gray8)),
-            ];
+            return await MatteFrameAsync(process, bgra, width, height, quality, device, cancellationToken).ConfigureAwait(false);
+        }
+    }
 
-            byte[] paramBytes = JsonSerializer.SerializeToUtf8Bytes(
-                new MattingParameters(quality == "alta" ? "alta" : "normal", "rastrear-vista-previa", true, device == "cpu" ? "cpu" : "gpu"),
-                RastrearJsonContext.Default.MattingParameters);
-            using JsonDocument paramDoc = JsonDocument.Parse(paramBytes);
+    /// <summary>La máscara de un cuadro con el módulo de la sesión (<see cref="CreateSession"/>), que sigue vivo para el siguiente.</summary>
+    public static Task<byte[]> MatteFrameAsync(
+        ModuleSession<ModuleProcess> session,
+        byte[] bgra,
+        int width,
+        int height,
+        string quality = "normal",
+        string device = "auto",
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+        CheckFrame(bgra, width, height);
+        return session.RunAsync((process, ct) => MatteFrameAsync(process, bgra, width, height, quality, device, ct), cancellationToken);
+    }
 
-            await process.Client.InvokeAsync(
-                "quitar-fondo",
-                paramDoc.RootElement.Clone(),
-                buffers: buffers,
-                cancellationToken: cancellationToken).ConfigureAwait(false);
+    /// <summary>Un cuadro por «quitar-fondo» con sesión nueva del módulo («rastrear-vista-previa»): cada vista previa parte de cero.</summary>
+    private static async Task<byte[]> MatteFrameAsync(ModuleProcess process, byte[] bgra, int width, int height, string quality, string device, CancellationToken cancellationToken)
+    {
+        long inputBytes = (long)width * height * 4;
+        long maskBytes = (long)width * height;
+        using SharedMemoryRegion region = process.Client.CreateRegion(inputBytes + maskBytes);
+        bgra.AsSpan(0, (int)inputBytes).CopyTo(region.GetSpan(0, inputBytes));
+        List<SharedBufferRef> buffers =
+        [
+            region.Describe(0, inputBytes, new VideoLayout(width, height, width * 4, PixelFormats.Bgra8)),
+            region.Describe(inputBytes, maskBytes, new VideoLayout(width, height, width, PixelFormats.Gray8)),
+        ];
 
-            return region.GetSpan(buffers[1]).ToArray();
+        byte[] paramBytes = JsonSerializer.SerializeToUtf8Bytes(
+            new MattingParameters(ToolParameters.NormalizeQuality(quality), "rastrear-vista-previa", true, ToolParameters.ComputeDevice(device)),
+            RastrearJsonContext.Default.MattingParameters);
+        using JsonDocument paramDoc = JsonDocument.Parse(paramBytes);
+
+        await process.Client.InvokeAsync(
+            "quitar-fondo",
+            paramDoc.RootElement.Clone(),
+            buffers: buffers,
+            cancellationToken: cancellationToken).ConfigureAwait(false);
+
+        return region.GetSpan(buffers[1]).ToArray();
+    }
+
+    private static void CheckFrame(byte[] bgra, int width, int height)
+    {
+        ArgumentNullException.ThrowIfNull(bgra);
+        if (width <= 0 || height <= 0 || bgra.Length < (long)width * height * 4)
+        {
+            throw new ArgumentException("El cuadro no tiene los bytes de su tamaño.", nameof(bgra));
         }
     }
 
@@ -537,7 +551,6 @@ public static class VisionService
     {
         string moduleExe = FindModule(moduleExePath);
         string ffmpeg = FfmpegTool.FindFfmpeg(ffmpegPath);
-        EnsureDotnetEnvironment();
 
         VideoInfo info = await FfmpegTool.ProbeAsync(inputVideo, ffmpeg, cancellationToken).ConfigureAwait(false);
 
@@ -559,18 +572,7 @@ public static class VisionService
         }
 
         // Llamar a reencuadre en el módulo
-        ModuleProcess process;
-        try
-        {
-            process = await ModuleProcess.StartAsync(
-                moduleExe,
-                options: new ModuleClientOptions { App = "rastrear" },
-                cancellationToken: cancellationToken).ConfigureAwait(false);
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException and not RastrearUserException)
-        {
-            throw new RastrearModuleException($"No se pudo iniciar el proceso del módulo de visión ({moduleExe}): {ex.Message}", ex);
-        }
+        ModuleProcess process = await StartModuleAsync(moduleExe, cancellationToken).ConfigureAwait(false);
 
         ReframeOutput reframeOutput;
         await using (process.ConfigureAwait(false))

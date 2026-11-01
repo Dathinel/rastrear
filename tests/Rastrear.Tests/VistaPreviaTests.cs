@@ -1,5 +1,7 @@
+using Rastrear.Core;
 using Rastrear.Core.Model;
 using Rastrear.Core.Ui;
+using Rastrear.Core.Vision;
 
 namespace Rastrear.Tests;
 
@@ -71,5 +73,93 @@ public class VistaPreviaTests
         Assert.True(FramePreview.SupportsPreview(3));
         Assert.False(FramePreview.SupportsPreview(0));
         Assert.Throws<ArgumentException>(() => FramePreview.ApplyMask(bgra, mask, 4, 3, asMask: true));
+    }
+
+    /// <summary>Un módulo de mentira: cuenta llamadas, se puede «morir» y sabe si lo cerraron.</summary>
+    private sealed class ModuloFalso : IAsyncDisposable
+    {
+        public int Calls;
+        public bool Exited;
+        public bool Disposed { get; private set; }
+
+        public ValueTask DisposeAsync()
+        {
+            Disposed = true;
+            return ValueTask.CompletedTask;
+        }
+    }
+
+    [Fact]
+    public async Task La_sesion_deja_el_modulo_vivo_entre_cuadros_y_lo_rearranca_si_muere_o_falla()
+    {
+        List<ModuloFalso> arrancados = [];
+        ModuleSession<ModuloFalso> sesion = new(
+            _ => { ModuloFalso m = new(); arrancados.Add(m); return Task.FromResult(m); },
+            m => m.Exited);
+        Assert.False(sesion.IsAlive);
+        Assert.Equal(0, sesion.StartCount);
+
+        // Varios cuadros seguidos (y herramientas cambiando por medio): el mismo proceso
+        Assert.Equal(1, await sesion.RunAsync((m, _) => Task.FromResult(++m.Calls)));
+        Assert.Equal(2, await sesion.RunAsync((m, _) => Task.FromResult(++m.Calls)));
+        Assert.Equal(3, await sesion.RunAsync((m, _) => Task.FromResult(++m.Calls)));
+        Assert.Equal(1, sesion.StartCount);
+        Assert.True(sesion.IsAlive);
+        Assert.Single(arrancados);
+
+        // Cancelar una petición (cambió un parámetro antes de acabar) no cierra el módulo
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => sesion.RunAsync<int>((_, _) => throw new OperationCanceledException()));
+        Assert.True(sesion.IsAlive);
+        Assert.False(arrancados[0].Disposed);
+
+        // Un fallo cierra el módulo y la siguiente llamada arranca otro
+        await Assert.ThrowsAsync<InvalidOperationException>(() => sesion.RunAsync<int>((_, _) => throw new InvalidOperationException("se rompió")));
+        Assert.True(arrancados[0].Disposed);
+        Assert.False(sesion.IsAlive);
+        Assert.Equal(1, await sesion.RunAsync((m, _) => Task.FromResult(++m.Calls)));
+        Assert.Equal(2, sesion.StartCount);
+
+        // El proceso muere por su cuenta: se nota y se arranca otro
+        arrancados[1].Exited = true;
+        Assert.False(sesion.IsAlive);
+        await sesion.RunAsync((m, _) => Task.FromResult(++m.Calls));
+        Assert.Equal(3, sesion.StartCount);
+        Assert.True(arrancados[1].Disposed);
+
+        // Dos peticiones a la vez van de una en una sobre el mismo módulo
+        TaskCompletionSource primera = new();
+        Task<int> a = sesion.RunAsync(async (m, _) => { await primera.Task; return ++m.Calls; });
+        Task<int> b = sesion.RunAsync((m, _) => Task.FromResult(++m.Calls));
+        await Task.Delay(50);
+        Assert.False(b.IsCompleted);
+        primera.SetResult();
+        Assert.Equal(2, await a);
+        Assert.Equal(3, await b);
+        Assert.Equal(3, sesion.StartCount);
+
+        // Cerrar sin desechar (soltar «Después») cierra el módulo; la sesión arrancaría otro
+        await sesion.CloseAsync();
+        Assert.True(arrancados[2].Disposed);
+        Assert.False(sesion.IsAlive);
+
+        // Desechar cierra y no sirve más
+        await sesion.RunAsync((m, _) => Task.FromResult(0));
+        await sesion.DisposeAsync();
+        Assert.True(arrancados[3].Disposed);
+        Assert.False(sesion.IsAlive);
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => sesion.RunAsync((_, _) => Task.FromResult(0)));
+        await sesion.DisposeAsync(); // Dos veces no pasa nada
+    }
+
+    [Fact]
+    public async Task La_vista_previa_del_fondo_comprueba_el_cuadro_antes_de_tocar_el_modulo()
+    {
+        // Un cuadro que no cuadra con su tamaño se rechaza sin buscar ni arrancar el módulo de visión
+        await using ModuleSession<Rodaje.Modules.Protocol.ModuleProcess> sesion = VisionService.CreateSession();
+        await Assert.ThrowsAsync<ArgumentException>(() => VisionService.MatteFrameAsync(sesion, new byte[3], 4, 2));
+        await Assert.ThrowsAsync<ArgumentException>(() => VisionService.MatteFrameAsync(sesion, new byte[32], 0, 2));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => VisionService.MatteFrameAsync(null!, new byte[32], 4, 2));
+        Assert.Equal(0, sesion.StartCount);
+        Assert.False(sesion.IsAlive);
     }
 }

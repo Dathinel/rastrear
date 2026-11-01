@@ -271,6 +271,26 @@
                             <CheckBox x:Name="ChkAutoCrop" Content="Recorte automático" IsChecked="True" />
                         </StackPanel>
 
+                        <!-- Carpeta de salida (preferencias.json): por omisión, cada resultado junto a su video -->
+                        <StackPanel Spacing="4">
+                            <TextBlock Text="Carpeta de salida" FontSize="12" Foreground="{ThemeResource TextMutedBrush}" />
+                            <Grid ColumnSpacing="8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <Border Background="{ThemeResource InsetBrush}" Padding="12,6" CornerRadius="4" VerticalAlignment="Center">
+                                    <TextBlock x:Name="OutputFolderText" Text="Junto al video" FontFamily="{StaticResource MonoFont}" FontSize="12"
+                                               Foreground="{ThemeResource AccentTextBrush}" TextTrimming="CharacterEllipsis" />
+                                </Border>
+                                <Button x:Name="BtnElegirCarpetaSalida" Grid.Column="1" Content="Elegir…" FontSize="12" Padding="8,4" Click="OnElegirCarpetaSalidaClick"
+                                        ToolTipService.ToolTip="Dónde dejar los resultados de todas las herramientas" />
+                                <Button x:Name="BtnCarpetaSalidaJunto" Grid.Column="2" Content="Junto al video" FontSize="12" Padding="8,4" IsEnabled="False" Click="OnCarpetaSalidaJuntoClick"
+                                        ToolTipService.ToolTip="Volver a dejar cada resultado en la carpeta de su video" />
+                            </Grid>
+                        </StackPanel>
+
                         <Border Height="1" Background="{ThemeResource PanelBorderBrush}" />
 
                         <!-- Acciones y progreso -->

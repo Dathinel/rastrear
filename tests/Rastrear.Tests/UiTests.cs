@@ -262,7 +262,7 @@ public class UiTests
     }
 
     [Fact]
-    public void WindowPlacement_FitsIntoWorkAreaAndRoundTrips()
+    public void WindowPlacement_FitsIntoWorkArea()
     {
         // Fuera de la pantalla por la derecha y por abajo: se mete dentro
         WindowPlacement? fit = new WindowPlacement(1800, 1000, 1200, 800, false).FitInto(0, 0, 1920, 1080, 960, 600);
@@ -274,20 +274,5 @@ public class UiTests
 
         // Más pequeña que el mínimo: se descarta
         Assert.Null(new WindowPlacement(0, 0, 300, 200, false).FitInto(0, 0, 1920, 1080, 960, 600));
-
-        string path = Path.Combine(Path.GetTempPath(), "rastrear-prueba-" + Guid.NewGuid().ToString("N"), "ventana.json");
-        try
-        {
-            Assert.Null(WindowPlacement.Load(path));
-            WindowPlacement original = new(10, 20, 1300, 850, true);
-            original.Save(path);
-            Assert.Equal(original, WindowPlacement.Load(path));
-            File.WriteAllText(path, "{basura");
-            Assert.Null(WindowPlacement.Load(path));
-        }
-        finally
-        {
-            Directory.Delete(Path.GetDirectoryName(path)!, recursive: true);
-        }
     }
 }
