@@ -7,6 +7,7 @@ using Rastrear.Core;
 using Rastrear.Core.Model;
 using Rastrear.Core.Stabilization;
 using Rastrear.Core.Tracking;
+using Rastrear.Core.Ui;
 using Rastrear.Core.Video;
 using Rastrear.Core.Vision;
 
@@ -202,10 +203,7 @@ internal static class Program
 
         if (string.IsNullOrWhiteSpace(salida))
         {
-            string ext = "." + formato;
-            string? dir = Path.GetDirectoryName(inputFile);
-            string baseName = Path.GetFileNameWithoutExtension(inputFile);
-            salida = string.IsNullOrEmpty(dir) ? $"{baseName}-seguimiento{ext}" : Path.Combine(dir, $"{baseName}-seguimiento{ext}");
+            salida = OutputNaming.OutputPathFor(inputFile, OutputNaming.ForTool(0).Suffix, "." + formato);
         }
 
         Console.Error.WriteLine($"Siguiendo objetivo en «{Path.GetFileName(inputFile)}»...");
@@ -315,10 +313,7 @@ internal static class Program
 
         if (string.IsNullOrWhiteSpace(salida))
         {
-            string ext = formato == "mascara" ? "-mascara.mp4" : "-fondo.webm";
-            string? dir = Path.GetDirectoryName(inputFile);
-            string baseName = Path.GetFileNameWithoutExtension(inputFile);
-            salida = string.IsNullOrEmpty(dir) ? $"{baseName}{ext}" : Path.Combine(dir, $"{baseName}{ext}");
+            salida = OutputNaming.OutputPathFor(inputFile, 1, backgroundMask: formato == "mascara");
         }
 
         Console.Error.WriteLine($"Quitando fondo de «{Path.GetFileName(inputFile)}» ({formato}, calidad {calidad})...");
@@ -387,9 +382,7 @@ internal static class Program
 
         if (string.IsNullOrWhiteSpace(salida))
         {
-            string? dir = Path.GetDirectoryName(inputFile);
-            string baseName = Path.GetFileNameWithoutExtension(inputFile);
-            salida = string.IsNullOrEmpty(dir) ? $"{baseName}-detecciones.json" : Path.Combine(dir, $"{baseName}-detecciones.json");
+            salida = OutputNaming.OutputPathFor(inputFile, 2);
         }
 
         Console.Error.WriteLine($"Detectando {objetivo} en «{Path.GetFileName(inputFile)}»...");
@@ -499,9 +492,7 @@ internal static class Program
 
         if (string.IsNullOrWhiteSpace(salida))
         {
-            string? dir = Path.GetDirectoryName(inputFile);
-            string baseName = Path.GetFileNameWithoutExtension(inputFile);
-            salida = string.IsNullOrEmpty(dir) ? $"{baseName}-reencuadrado.mp4" : Path.Combine(dir, $"{baseName}-reencuadrado.mp4");
+            salida = OutputNaming.OutputPathFor(inputFile, 3);
         }
 
         Console.Error.WriteLine($"Reencuadrando «{Path.GetFileName(inputFile)}» a relación {targetAspect:0.###}...");
@@ -569,9 +560,7 @@ internal static class Program
 
         if (string.IsNullOrWhiteSpace(salida))
         {
-            string? dir = Path.GetDirectoryName(inputFile);
-            string baseName = Path.GetFileNameWithoutExtension(inputFile);
-            salida = string.IsNullOrEmpty(dir) ? $"{baseName}-estabilizado.mp4" : Path.Combine(dir, $"{baseName}-estabilizado.mp4");
+            salida = OutputNaming.OutputPathFor(inputFile, 4);
         }
 
         Console.Error.WriteLine($"Estabilizando «{Path.GetFileName(inputFile)}» (intensidad {intensity:0.##}, recorte automático: {autoCrop})...");
