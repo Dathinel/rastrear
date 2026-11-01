@@ -120,6 +120,7 @@ public sealed record EchoDieParameters(
 [JsonSerializable(typeof(EchoDieParameters))]
 [JsonSerializable(typeof(Rastrear.Core.Ui.WindowPlacement))]
 [JsonSerializable(typeof(Rastrear.Core.Ui.UserPreferences))]
+[JsonSerializable(typeof(Rastrear.Core.Ui.GitHubRelease))]
 internal partial class RastrearJsonContext : JsonSerializerContext
 {
 }

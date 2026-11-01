@@ -36,6 +36,13 @@ public sealed class UserPreferences
     [JsonPropertyName("estabilizarIntensidad")] public double StabilizeIntensity { get; set; } = 0.5;
     [JsonPropertyName("estabilizarRecorte")] public bool StabilizeAutoCrop { get; set; } = true;
 
+    /// <summary>«Avisar cuando haya una versión nueva»: al arrancar se consulta GitHub (<see cref="UpdateChecker"/>).</summary>
+    [JsonPropertyName("avisarVersionNueva")] public bool NotifyNewVersion { get; set; } = true;
+    /// <summary>Cuándo se consultó por última vez: como mucho una vez cada 24 h.</summary>
+    [JsonPropertyName("ultimaConsultaVersion")] public DateTimeOffset? LastUpdateCheck { get; set; }
+    /// <summary>Etiqueta (<c>v1.1.0</c>) a la que se dijo «Más tarde»: no se vuelve a avisar de esa.</summary>
+    [JsonPropertyName("versionDescartada")] public string? DismissedVersion { get; set; }
+
     /// <summary>Índice de la herramienta en el selector de la ventana; 0 si el nombre guardado no existe.</summary>
     [JsonIgnore]
     public int ToolIndex
@@ -71,6 +78,7 @@ public sealed class UserPreferences
         if (ReframeAspect is not ("9:16" or "1:1" or "4:5")) ReframeAspect = "9:16";
         ReframeSmoothing = ClampFinite(ReframeSmoothing, 0.1, 0.9, 0.5);
         StabilizeIntensity = ClampFinite(StabilizeIntensity, 0.1, 1.0, 0.5);
+        if (string.IsNullOrWhiteSpace(DismissedVersion)) DismissedVersion = null;
         return this;
     }
 
