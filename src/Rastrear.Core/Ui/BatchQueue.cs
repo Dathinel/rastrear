@@ -88,6 +88,17 @@ public sealed class BatchQueue
         Current = null;
     }
 
+    /// <summary>Al reanudar, el que se canceló a medias vuelve a pendiente y se repite.</summary>
+    public void RequeueCancelled()
+    {
+        foreach (BatchItem i in _items.Where(i => i.State == BatchItemState.Cancelled))
+        {
+            i.State = BatchItemState.Pending;
+            i.Fraction = 0;
+            i.Stage = string.Empty;
+        }
+    }
+
     /// <summary>Toma el siguiente pendiente y lo marca en curso; null si no queda ninguno.</summary>
     public BatchItem? StartNext()
     {

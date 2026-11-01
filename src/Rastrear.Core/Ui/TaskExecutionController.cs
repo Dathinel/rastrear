@@ -88,6 +88,9 @@ public sealed class TaskExecutionController
     /// <summary>Lo que seguía vivo (ffmpeg, módulo) al vencer el tope de <see cref="CancelAsync"/>; vacío si no quedó nada.</summary>
     public IReadOnlyList<string> LeftAliveAfterCancel { get; private set; } = [];
 
+    /// <summary>La cancelación en curso (o la última): quien detecte el token cancelado la espera antes de dar por cancelado.</summary>
+    public Task? CancelTask { get; private set; }
+
     /// <summary>Los procesos hijos de la ejecución en curso (lo arrancado tras <see cref="BeginExecution"/> en su flujo).</summary>
     public ChildProcessRegistry.Scope? Processes => _scope;
 
@@ -95,23 +98,25 @@ public sealed class TaskExecutionController
     /// Cancela el token y además mata los procesos hijos de esta ejecución apuntados en <see cref="ChildProcessRegistry"/>
     /// (ffmpeg, ffprobe y el módulo de visión), esperando hasta <paramref name="timeout"/> a que salgan: cancelar no deja nada vivo.
     /// </summary>
-    public async Task<bool> CancelAsync(TimeSpan timeout = default)
+    public Task<bool> CancelAsync(TimeSpan timeout = default)
     {
         if (State != ExecutionState.Running || _cts is null)
         {
-            return false;
+            return Task.FromResult(false);
         }
 
-        if (timeout == default)
-        {
-            timeout = TimeSpan.FromSeconds(1.0);
-        }
+        Task<bool> task = CancelCoreAsync(timeout == default ? TimeSpan.FromSeconds(1.0) : timeout);
+        CancelTask = task;
+        return task;
+    }
 
+    private async Task<bool> CancelCoreAsync(TimeSpan timeout)
+    {
         State = ExecutionState.Cancelling;
         CurrentStatus = "Cancelando...";
 
         Stopwatch sw = Stopwatch.StartNew();
-        _cts.Cancel();
+        _cts!.Cancel();
         LeftAliveAfterCancel = _scope is null ? [] : await _scope.KillAllAsync(timeout).ConfigureAwait(false);
         sw.Stop();
         LastCancelDuration = sw.Elapsed;
