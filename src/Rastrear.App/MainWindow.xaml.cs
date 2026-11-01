@@ -61,6 +61,12 @@ public sealed partial class MainWindow : Window
 
     // Última carpeta, última herramienta y sus parámetros (preferencias.json)
     private readonly UserPreferences _prefs = UserPreferences.Load(UserPreferences.DefaultPath);
+    private bool _applyingPreferences;
+
+    // Aviso de versión nueva: GitHub sin token, como mucho una vez cada 24 h (UpdateChecker)
+    private readonly GitHubReleaseFeed _releaseFeed = new(UpdateChecker.CurrentVersion);
+    private ReleaseInfo? _offeredRelease;
+    private string? _launcherPath;
 
     // Cola de videos soltados: se procesan uno tras otro con la misma herramienta
     private readonly BatchQueue _queue = new();
@@ -104,13 +110,16 @@ public sealed partial class MainWindow : Window
         };
 
         _playbackTimer.Tick += OnPlaybackTick;
-        AboutVersionText.Text = "Versión " + (typeof(MainWindow).Assembly.GetName().Version?.ToString(3) ?? "desconocida");
+        AboutVersionText.Text = "Versión " + UpdateChecker.Format(UpdateChecker.CurrentVersion);
 
         // Medición de arranque en frío
         if (Program.MeasureStartup)
         {
             RecordStartup();
         }
+
+        // Al arrancar, sin bloquear la ventana; con el aviso apagado o antes de 24 h no consulta
+        _ = CheckForUpdatesAsync(manual: false);
     }
 
     private async void OnAcercaDeClick(object sender, RoutedEventArgs e)
@@ -206,6 +215,19 @@ public sealed partial class MainWindow : Window
 
     private void ApplyPreferences()
     {
+        _applyingPreferences = true;
+        try
+        {
+            ApplyPreferencesCore();
+        }
+        finally
+        {
+            _applyingPreferences = false;
+        }
+    }
+
+    private void ApplyPreferencesCore()
+    {
         UserPreferences p = _prefs;
         TaskSelector.SelectedIndex = p.ToolIndex;
 
@@ -229,6 +251,8 @@ public sealed partial class MainWindow : Window
 
         SliderIntensity.Value = p.StabilizeIntensity;
         ChkAutoCrop.IsChecked = p.StabilizeAutoCrop;
+
+        SwitchAvisarVersion.IsOn = p.NotifyNewVersion;
     }
 
     private void CollectPreferences()
@@ -246,6 +270,7 @@ public sealed partial class MainWindow : Window
         p.ReframeSmoothing = SliderSmoothing.Value;
         p.StabilizeIntensity = SliderIntensity.Value;
         p.StabilizeAutoCrop = ChkAutoCrop.IsChecked == true;
+        p.NotifyNewVersion = SwitchAvisarVersion.IsOn;
         p.Normalize();
     }
 
@@ -277,19 +302,101 @@ public sealed partial class MainWindow : Window
         if (launcher is null) return;
 
         Button open = new() { Content = "Abrir el Lanzador" };
-        open.Click += (_, _) =>
-        {
-            try
-            {
-                Process.Start(new ProcessStartInfo(launcher) { UseShellExecute = true });
-            }
-            catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException or FileNotFoundException)
-            {
-                ShowNotification($"No se pudo abrir el Lanzador ({launcher}): {ex.Message}", InfoBarSeverity.Error);
-            }
-        };
+        open.Click += (_, _) => TryOpenLauncher(launcher);
         NotificationBar.ActionButton = open;
     }
+
+    private void TryOpenLauncher(string launcher)
+    {
+        try
+        {
+            Process.Start(new ProcessStartInfo(launcher) { UseShellExecute = true });
+        }
+        catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException or FileNotFoundException)
+        {
+            ShowNotification($"No se pudo abrir el Lanzador ({launcher}): {ex.Message}", InfoBarSeverity.Error);
+        }
+    }
+
+    #region Versión nueva
+
+    /// <summary>
+    /// Consulta la última release (<see cref="UpdateChecker"/>) sin bloquear la ventana. Al arrancar (<paramref name="manual"/> false)
+    /// solo si el aviso está activado y pasaron 24 h, y cualquier fallo es silencio; desde «Buscar actualizaciones» siempre,
+    /// y el resultado se dice bajo el enlace, también cuando no hay nada nuevo.
+    /// </summary>
+    private async Task CheckForUpdatesAsync(bool manual)
+    {
+        if (manual)
+        {
+            BtnBuscarActualizaciones.IsEnabled = false;
+            UpdateStatusText.Text = "Consultando GitHub…";
+        }
+
+        UpdateCheckResult result;
+        try
+        {
+            result = await UpdateChecker.CheckAsync(_releaseFeed, UpdateChecker.CurrentVersion, _prefs, DateTimeOffset.Now, force: manual);
+        }
+        catch (Exception)
+        {
+            // Nada de esto puede tumbar la app: sin aviso y ya está.
+            result = UpdateCheckResult.Failed;
+        }
+
+        if (result.Outcome != UpdateCheckOutcome.Skipped)
+        {
+            SavePreferences(); // La hora de la consulta
+        }
+
+        if (manual)
+        {
+            BtnBuscarActualizaciones.IsEnabled = true;
+            UpdateStatusText.Text = UpdateChecker.ManualCheckText(result, UpdateChecker.CurrentVersion);
+        }
+
+        if (result.Outcome == UpdateCheckOutcome.NewVersion && result.Release is { } release)
+        {
+            ShowUpdateBanner(release);
+        }
+    }
+
+    private void ShowUpdateBanner(ReleaseInfo release)
+    {
+        _offeredRelease = release;
+        _launcherPath = LauncherLocator.Find();
+        UpdateBannerTitle.Text = release.BannerText;
+        UpdateBannerDetail.Text = UpdateChecker.BannerDetail(UpdateChecker.CurrentVersion, launcherFound: _launcherPath is not null);
+        BtnVerNovedades.NavigateUri = new Uri(release.Url);
+        BtnAbrirLanzador.Visibility = _launcherPath is null ? Visibility.Collapsed : Visibility.Visible;
+        UpdateBanner.Visibility = Visibility.Visible;
+    }
+
+    private void OnAbrirLanzadorClick(object sender, RoutedEventArgs e)
+    {
+        if (_launcherPath is { } launcher) TryOpenLauncher(launcher);
+    }
+
+    private void OnMasTardeClick(object sender, RoutedEventArgs e)
+    {
+        _prefs.DismissedVersion = _offeredRelease?.Tag;
+        UpdateBanner.Visibility = Visibility.Collapsed;
+        SavePreferences();
+    }
+
+    private void OnAvisarVersionToggled(object sender, RoutedEventArgs e)
+    {
+        if (_applyingPreferences || BtnEjecutar is null) return;
+        SavePreferences();
+    }
+
+    private void OnBuscarActualizacionesClick(object sender, RoutedEventArgs e)
+    {
+        if (!BtnBuscarActualizaciones.IsEnabled) return;
+        _ = CheckForUpdatesAsync(manual: true);
+    }
+
+    #endregion
 
     #region Atajos de teclado
 

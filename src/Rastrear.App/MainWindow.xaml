@@ -16,6 +16,7 @@
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
@@ -54,6 +55,15 @@
             <StackPanel Spacing="8" MaxWidth="420">
                 <TextBlock Text="Rastrear" FontFamily="{StaticResource TitleFont}" FontSize="22" FontWeight="SemiBold" />
                 <TextBlock x:Name="AboutVersionText" FontFamily="{StaticResource MonoFont}" FontSize="13" Foreground="{ThemeResource TextMutedBrush}" />
+
+                <!-- Actualizaciones: el interruptor va a preferencias.json; «Buscar actualizaciones» consulta al momento -->
+                <ToggleSwitch x:Name="SwitchAvisarVersion" IsOn="True" Margin="0,4,0,0"
+                              OnContent="Avisar cuando haya una versión nueva" OffContent="Avisar cuando haya una versión nueva" Toggled="OnAvisarVersionToggled" />
+                <StackPanel Orientation="Horizontal" Spacing="12">
+                    <HyperlinkButton x:Name="BtnBuscarActualizaciones" Content="Buscar actualizaciones" Padding="0,2" Click="OnBuscarActualizacionesClick" />
+                    <TextBlock x:Name="UpdateStatusText" VerticalAlignment="Center" FontSize="12" Foreground="{ThemeResource TextMutedBrush}" TextWrapping="Wrap" MaxWidth="260" />
+                </StackPanel>
+
                 <TextBlock Text="Copyright (C) 2026 Dathinel. Software libre bajo la licencia GPLv3 (GPL-3.0-only); el texto completo va en LICENSE junto al programa." TextWrapping="Wrap" />
                 <HyperlinkButton NavigateUri="https://github.com/Dathinel/rodaje" Padding="0,2">
                     <TextBlock Text="Basado en el editor de video de código abierto de Dathinel / Rodaje (https://github.com/Dathinel/rodaje)" TextWrapping="Wrap" />
@@ -61,11 +71,34 @@
             </StackPanel>
         </ContentDialog>
 
+        <!-- Versión nueva: franja discreta bajo la cabecera (UpdateChecker); «Más tarde» la calla para esa versión -->
+        <Border x:Name="UpdateBanner" Grid.Row="1" Visibility="Collapsed" Margin="24,0,24,8" Padding="14,8" CornerRadius="8"
+                Background="{ThemeResource PanelBrush}" BorderBrush="{ThemeResource PanelBorderBrush}" BorderThickness="1">
+            <Grid ColumnSpacing="12">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <Rectangle Width="3" RadiusX="1.5" RadiusY="1.5" Fill="{ThemeResource AccentTextBrush}" />
+                <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
+                    <TextBlock x:Name="UpdateBannerTitle" FontFamily="{StaticResource TitleFont}" FontSize="14" FontWeight="SemiBold" Foreground="{ThemeResource TextBrush}" />
+                    <TextBlock x:Name="UpdateBannerDetail" FontSize="12" Foreground="{ThemeResource TextMutedBrush}" TextWrapping="Wrap" />
+                </StackPanel>
+                <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center" Spacing="4">
+                    <HyperlinkButton x:Name="BtnVerNovedades" Content="Ver novedades" FontSize="12" Padding="8,4" ToolTipService.ToolTip="Abre la página de la versión en GitHub" />
+                    <HyperlinkButton x:Name="BtnAbrirLanzador" Content="Abrir el Lanzador" FontSize="12" Padding="8,4" Visibility="Collapsed" Click="OnAbrirLanzadorClick"
+                                     ToolTipService.ToolTip="El Lanzador de Dathinel instala la versión nueva" />
+                    <HyperlinkButton Content="Más tarde" FontSize="12" Padding="8,4" Click="OnMasTardeClick" ToolTipService.ToolTip="No volver a avisar de esta versión" />
+                </StackPanel>
+            </Grid>
+        </Border>
+
         <!-- Barra de avisos / errores -->
-        <InfoBar x:Name="NotificationBar" Grid.Row="1" IsOpen="False" IsClosable="True" Margin="24,0,24,8" />
+        <InfoBar x:Name="NotificationBar" Grid.Row="2" IsOpen="False" IsClosable="True" Margin="24,0,24,8" />
 
         <!-- Área principal -->
-        <Grid Grid.Row="2" Margin="24,0,24,24" ColumnSpacing="16">
+        <Grid Grid.Row="3" Margin="24,0,24,24" ColumnSpacing="16">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" MinWidth="400" />
                 <ColumnDefinition Width="360" MinWidth="320" />
