@@ -1,8 +1,9 @@
 namespace Rastrear.Core.Ui;
 
 /// <summary>
-/// Nombre del archivo que produce cada herramienta, junto al video de entrada: <c>clip-fondo.webm</c>,
-/// <c>clip-seguimiento.csv</c>… Si ya existe, <c>clip-fondo (2).webm</c>, sin pisar nada. Lo usan la ventana y la Cli.
+/// Nombre del archivo que produce cada herramienta, junto al video de entrada o en la carpeta de salida elegida:
+/// <c>clip-fondo.webm</c>, <c>clip-seguimiento.csv</c>… Si ya existe, <c>clip-fondo (2).webm</c>, sin pisar nada.
+/// Lo usan la ventana y la Cli.
 /// </summary>
 public static class OutputNaming
 {
@@ -17,11 +18,16 @@ public static class OutputNaming
         _ => throw new ArgumentOutOfRangeException(nameof(toolIndex)),
     };
 
-    /// <summary>Ruta de salida junto a la entrada, sin colisionar con un archivo que exista (<paramref name="exists"/>, por defecto el disco).</summary>
-    public static string OutputPathFor(string inputPath, string suffix, string extension, Func<string, bool>? exists = null)
+    /// <summary>
+    /// Ruta de salida sin colisionar con un archivo que exista (<paramref name="exists"/>, por defecto el disco):
+    /// en <paramref name="outputFolder"/> si se da, si no junto a la entrada.
+    /// </summary>
+    public static string OutputPathFor(string inputPath, string suffix, string extension, Func<string, bool>? exists = null, string? outputFolder = null)
     {
         exists ??= File.Exists;
-        string dir = Path.GetDirectoryName(Path.GetFullPath(inputPath)) ?? string.Empty;
+        string dir = string.IsNullOrWhiteSpace(outputFolder)
+            ? Path.GetDirectoryName(Path.GetFullPath(inputPath)) ?? string.Empty
+            : Path.GetFullPath(outputFolder);
         string stem = Path.GetFileNameWithoutExtension(inputPath) + "-" + suffix;
         string candidate = Path.Combine(dir, stem + extension);
         for (int n = 2; exists(candidate); n++)
@@ -31,9 +37,9 @@ public static class OutputNaming
         return candidate;
     }
 
-    public static string OutputPathFor(string inputPath, int toolIndex, bool backgroundMask = false, Func<string, bool>? exists = null)
+    public static string OutputPathFor(string inputPath, int toolIndex, bool backgroundMask = false, Func<string, bool>? exists = null, string? outputFolder = null)
     {
         (string suffix, string ext) = ForTool(toolIndex, backgroundMask);
-        return OutputPathFor(inputPath, suffix, ext, exists);
+        return OutputPathFor(inputPath, suffix, ext, exists, outputFolder);
     }
 }

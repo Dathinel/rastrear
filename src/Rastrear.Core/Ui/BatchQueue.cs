@@ -34,7 +34,8 @@ public sealed class BatchItem(string path)
 
 /// <summary>
 /// Cola de varios videos para la misma herramienta: se procesan uno a uno, con progreso por archivo y global;
-/// cancelar deja el actual como cancelado y los pendientes sin tocar.
+/// cancelar deja el actual como cancelado y los pendientes sin tocar. Solo admite herramientas sin objetivo:
+/// «Seguir» necesita un clic en cada video, así que con ella no se encola más que el video cargado.
 /// </summary>
 public sealed class BatchQueue
 {
@@ -44,6 +45,16 @@ public sealed class BatchQueue
     public int Count => _items.Count;
     public BatchItem? Current { get; private set; }
     public bool HasPending => _items.Any(i => i.State == BatchItemState.Pending);
+
+    /// <summary>Si la herramienta (índice del selector) se puede aplicar a varios videos seguidos: todas menos «Seguir», que pide un clic.</summary>
+    public static bool SupportsTool(int toolIndex) => toolIndex != 0;
+
+    /// <summary>Lo que se dice al soltar varios videos con «Seguir»: se abre el primero y los demás no entran.</summary>
+    public static string NotQueuedText(int dropped, string firstFileName) =>
+        $"«Seguir» necesita un clic en cada video, así que no admite cola: se abrió «{firstFileName}» y los otros {dropped - 1} no entraron.";
+
+    /// <summary>Lo que se dice al cambiar a «Seguir» con varios en cola.</summary>
+    public const string TrimmedText = "«Seguir» necesita un clic en cada video: la cola se vació y queda solo el video cargado.";
 
     /// <summary>Añade los que no estén ya (misma ruta, sin distinguir mayúsculas) y devuelve cuántos entraron.</summary>
     public int Enqueue(IEnumerable<string> paths)
@@ -57,6 +68,32 @@ public sealed class BatchQueue
             added++;
         }
         return added;
+    }
+
+    /// <summary>
+    /// Como <see cref="Enqueue(IEnumerable{string})"/>, pero con una herramienta que necesita objetivo
+    /// (<see cref="SupportsTool"/>) solo entra el primero: los demás pedirían su propio clic.
+    /// </summary>
+    public int Enqueue(IEnumerable<string> paths, int toolIndex) =>
+        Enqueue(SupportsTool(toolIndex) ? paths : paths.Where(p => !string.IsNullOrWhiteSpace(p)).Take(1));
+
+    /// <summary>
+    /// Al pasar a una herramienta que necesita objetivo, deja en la cola solo <paramref name="keepPath"/> (el video cargado;
+    /// si no está, el primero). Devuelve si quitó alguno. Solo cuando nada corre.
+    /// </summary>
+    public bool TrimToTool(int toolIndex, string? keepPath)
+    {
+        if (SupportsTool(toolIndex) || _items.Count <= 1) return false;
+        if (Current is { State: BatchItemState.Running })
+        {
+            throw new InvalidOperationException("No se puede recortar la cola mientras se procesa un archivo.");
+        }
+
+        BatchItem keep = _items.FirstOrDefault(i => string.Equals(i.Path, keepPath, StringComparison.OrdinalIgnoreCase)) ?? _items[0];
+        _items.Clear();
+        _items.Add(keep);
+        Current = null;
+        return true;
     }
 
     /// <summary>Vacía la cola (solo cuando nada corre).</summary>
