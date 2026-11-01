@@ -162,4 +162,54 @@ public class VistaPreviaTests
         Assert.Equal(0, sesion.StartCount);
         Assert.False(sesion.IsAlive);
     }
+
+    [Fact]
+    public async Task DisposeAsync_mientras_hay_llamada_en_vuelo_no_rompe_la_llamada_siguiente()
+    {
+        List<ModuloFalso> arrancados = [];
+        ModuleSession<ModuloFalso> sesion = new(
+            _ => { ModuloFalso m = new(); arrancados.Add(m); return Task.FromResult(m); },
+            m => m.Exited);
+
+        TaskCompletionSource llamadaEnVueloEntro = new();
+        TaskCompletionSource llamadaEnVueloContinua = new();
+
+        // Lanzar una llamada que se queda a la mitad
+        Task<int> enVuelo = sesion.RunAsync(async (m, _) =>
+        {
+            m.Calls++;
+            llamadaEnVueloEntro.SetResult();
+            await llamadaEnVueloContinua.Task;
+            return m.Calls;
+        });
+
+        await llamadaEnVueloEntro.Task;
+        Assert.Single(arrancados);
+        Assert.False(arrancados[0].Disposed);
+
+        // Concurrentemente se desecha la sesión (el módulo en vuelo aún tiene el lock del semáforo)
+        Task dispose = sesion.DisposeAsync().AsTask();
+        Assert.False(dispose.IsCompleted);
+
+        // Permitir que la llamada en vuelo termine
+        llamadaEnVueloContinua.SetResult();
+        Assert.Equal(1, await enVuelo);
+
+        // Ahora DisposeAsync debe completar limpiamente
+        await dispose;
+        Assert.True(arrancados[0].Disposed);
+        Assert.False(sesion.IsAlive);
+
+        // La llamada siguiente sobre esta sesión desechada lanza ObjectDisposedException
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => sesion.RunAsync((_, _) => Task.FromResult(0)));
+
+        // Y una sesión nueva posterior arranca un módulo nuevo sin errores
+        ModuleSession<ModuloFalso> nuevaSesion = new(
+            _ => { ModuloFalso m = new(); arrancados.Add(m); return Task.FromResult(m); },
+            m => m.Exited);
+        Assert.Equal(1, await nuevaSesion.RunAsync((m, _) => Task.FromResult(++m.Calls)));
+        Assert.Equal(2, arrancados.Count);
+        Assert.True(nuevaSesion.IsAlive);
+        await nuevaSesion.DisposeAsync();
+    }
 }
