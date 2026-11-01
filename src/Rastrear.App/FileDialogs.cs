@@ -18,7 +18,7 @@ internal static unsafe class FileDialogs
     private const uint FosFileMustExist = 0x1000;
 
     public static readonly (string Name, string Spec) VideoFilter =
-        ("Archivos de video", "*.mp4;*.mov;*.webm;*.mkv;*.avi;*.ts");
+        ("Archivos de video", string.Join(";", Rastrear.Core.Ui.BatchQueue.VideoExtensions.Select(e => "*" + e)));
 
     public static readonly (string Name, string Spec) CsvFilter =
         ("Archivo CSV", "*.csv");

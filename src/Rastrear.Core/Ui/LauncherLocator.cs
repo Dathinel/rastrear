@@ -2,8 +2,8 @@ namespace Rastrear.Core.Ui;
 
 /// <summary>
 /// Dónde está el Lanzador de Dathinel en este PC, para abrirlo cuando falta el módulo de visión. Orden:
-/// <c>RASTREAR_LANZADOR</c> (exe o carpeta), <c>%LOCALAPPDATA%\Dathinel\Lanzador</c> (directo o en <c>app\</c>, como
-/// Rodaje) y <c>%LOCALAPPDATA%\Programs\Lanzador</c>.
+/// <c>RASTREAR_LANZADOR</c> (exe o carpeta), <c>%LOCALAPPDATA%\Programs\Lanzador</c> (donde lo deja su instalador,
+/// <c>{userpf}\Lanzador</c> en <c>Lanzador.iss</c>) y <c>%LOCALAPPDATA%\Dathinel\Lanzador</c> (directo o en <c>app\</c>, como Rodaje).
 /// </summary>
 public static class LauncherLocator
 {
@@ -29,8 +29,8 @@ public static class LauncherLocator
             yield return custom;
             yield return Path.Combine(custom, ExeName);
         }
+        yield return Path.Combine(localAppData, "Programs", "Lanzador", ExeName);
         yield return Path.Combine(localAppData, "Dathinel", "Lanzador", ExeName);
         yield return Path.Combine(localAppData, "Dathinel", "Lanzador", "app", ExeName);
-        yield return Path.Combine(localAppData, "Programs", "Lanzador", ExeName);
     }
 }

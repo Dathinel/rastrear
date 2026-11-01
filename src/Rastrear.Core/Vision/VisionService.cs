@@ -501,7 +501,7 @@ public static class VisionService
         await using (process.ConfigureAwait(false))
         using (TrackModule(process))
         {
-            SharedMemoryRegion region = process.Client.CreateRegion(inputBytes + maskBytes);
+            using SharedMemoryRegion region = process.Client.CreateRegion(inputBytes + maskBytes);
             bgra.AsSpan(0, (int)inputBytes).CopyTo(region.GetSpan(0, inputBytes));
             List<SharedBufferRef> buffers =
             [

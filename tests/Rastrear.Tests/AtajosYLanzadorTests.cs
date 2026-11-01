@@ -40,6 +40,12 @@ public sealed class AtajosYLanzadorTests : IDisposable
         File.WriteAllText(directo, "");
         Assert.Equal(directo, LauncherLocator.Find(k => env.GetValueOrDefault(k), local));
 
+        // Donde lo deja de verdad el instalador del Lanzador ({userpf}\Lanzador) gana a las suposiciones
+        string instalado = Path.Combine(local, "Programs", "Lanzador", LauncherLocator.ExeName);
+        Directory.CreateDirectory(Path.GetDirectoryName(instalado)!);
+        File.WriteAllText(instalado, "");
+        Assert.Equal(instalado, LauncherLocator.Find(k => env.GetValueOrDefault(k), local));
+
         string propio = Path.Combine(_raiz, "propio");
         Directory.CreateDirectory(propio);
         File.WriteAllText(Path.Combine(propio, LauncherLocator.ExeName), "");

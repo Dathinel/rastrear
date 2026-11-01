@@ -2,7 +2,7 @@ namespace Rastrear.Core.Ui;
 
 /// <summary>
 /// Nombre del archivo que produce cada herramienta, junto al video de entrada: <c>clip-fondo.webm</c>,
-/// <c>clip-seguimiento.csv</c>… Si ya existe, <c>clip-fondo (2).webm</c>, sin pisar nada.
+/// <c>clip-seguimiento.csv</c>… Si ya existe, <c>clip-fondo (2).webm</c>, sin pisar nada. Lo usan la ventana y la Cli.
 /// </summary>
 public static class OutputNaming
 {
@@ -12,7 +12,7 @@ public static class OutputNaming
         0 => ("seguimiento", ".csv"),
         1 => backgroundMask ? ("mascara", ".mp4") : ("fondo", ".webm"),
         2 => ("detecciones", ".json"),
-        3 => ("reencuadre", ".mp4"),
+        3 => ("reencuadrado", ".mp4"),
         4 => ("estabilizado", ".mp4"),
         _ => throw new ArgumentOutOfRangeException(nameof(toolIndex)),
     };

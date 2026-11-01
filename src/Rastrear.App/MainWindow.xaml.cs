@@ -100,10 +100,13 @@ public sealed partial class MainWindow : Window
         RestorePlacement();
         ApplyPreferences();
         AppWindow.Changed += OnAppWindowChanged;
-        Closed += (_, _) =>
+        Closed += async (_, _) =>
         {
+            // Cancelar arranca el kill de ffmpeg y el módulo antes de guardar; se espera al final para no dejarlos vivos.
+            Task cancel = _taskController.CancelAsync();
             SavePlacement();
             SavePreferences();
+            await cancel;
         };
 
         _playbackTimer.Tick += OnPlaybackTick;
@@ -1005,7 +1008,8 @@ public sealed partial class MainWindow : Window
         Pause();
         SavePreferences();
 
-        // Sin pendientes: con varios en cola se repite la cola entera; si no, el video cargado es la cola.
+        // Al reanudar, el cancelado a medias se repite. Sin pendientes: con varios en cola se repite la cola entera; si no, el video cargado es la cola.
+        if (_queue.Count > 1) _queue.RequeueCancelled();
         if (!_queue.HasPending)
         {
             if (_queue.Count > 1)
@@ -1045,6 +1049,7 @@ public sealed partial class MainWindow : Window
             }
             catch (OperationCanceledException)
             {
+                if (_taskController.CancelTask is { } cancelTask) await cancelTask; // hasta que el kill termine y LeftAliveAfterCancel esté puesto
                 _queue.MarkCancelled();
                 cancelled = true;
                 break;
@@ -1077,9 +1082,11 @@ public sealed partial class MainWindow : Window
         else
         {
             bool anyFailed = _queue.Items.Any(i => i.State == BatchItemState.Failed);
-            if (anyFailed && _queue.Count == 1)
+            if (_queue.Items.All(i => i.State == BatchItemState.Failed))
             {
-                _taskController.MarkFaulted(new RastrearUserException(_queue.Items[0].Error ?? "Error durante la ejecución."));
+                _taskController.MarkFaulted(new RastrearUserException(_queue.Count == 1
+                    ? _queue.Items[0].Error ?? "Error durante la ejecución."
+                    : $"Ningún video salió bien: {_queue.Summary}. Primero: {_queue.Items[0].Error}"));
                 ShowNotification(_taskController.LastError ?? "Error durante la ejecución.", InfoBarSeverity.Error);
             }
             else
@@ -1114,6 +1121,21 @@ public sealed partial class MainWindow : Window
         bool isDisplayed = string.Equals(videoPath, _currentVideoPath, StringComparison.OrdinalIgnoreCase);
         string output = OutputNaming.OutputPathFor(videoPath, taskIdx, SwitchFondoModo.IsOn);
 
+        try
+        {
+            await RunToolCoreAsync(videoPath, output, taskIdx, isDisplayed, progress, ct);
+        }
+        catch
+        {
+            // Cancelado o fallido: el archivo a medias no se queda junto al video como si fuera un resultado.
+            try { File.Delete(output); } catch (IOException) { } catch (UnauthorizedAccessException) { }
+            throw;
+        }
+        return output;
+    }
+
+    private async Task RunToolCoreAsync(string videoPath, string output, int taskIdx, bool isDisplayed, IProgress<VideoProgress> progress, CancellationToken ct)
+    {
         switch (taskIdx)
         {
             case 0: // Seguir: el mismo punto o región en todos los videos de la cola
@@ -1162,8 +1184,6 @@ public sealed partial class MainWindow : Window
                     progress: progress, cancellationToken: ct);
                 break;
         }
-
-        return output;
     }
 
     #region Cola de archivos

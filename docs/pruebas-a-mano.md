@@ -98,7 +98,7 @@ Lo que solo tú puedes juzgar a ojo. Captura de referencia: `docs/capturas/pulid
 4. **Después:** con «Reencuadrar», pulsa «Después» y cambia entre 9:16, 1:1 y 4:5: el visor muestra el recorte al instante. Con «Quitar fondo», tarda lo que tarde el módulo con un cuadro y muestra el sujeto sobre el tablero (o la máscara en grises). ¿El tablero se ve bien en los dos temas? Con «Seguir» el botón explica que no hay vista previa.
 5. **Resultado:** al acabar, «Abrir carpeta» abre el Explorador con el archivo seleccionado y «Copiar ruta» deja la ruta completa en el portapapeles (pégala en el Ejecutar de Windows).
 6. **Atajos:** `Ctrl+O` abre el diálogo, `Ctrl+Enter` ejecuta (solo con video cargado), `Esc` cancela (solo mientras corre). Las descripciones emergentes de los botones los muestran.
-7. **Sin módulo:** renombra la carpeta de `modulo-vision` y pulsa «Ejecutar» con «Detectar»: el aviso dice qué falta y para qué, sin rutas, y el botón «Abrir el Lanzador» aparece solo si `Lanzador.exe` está en `%LOCALAPPDATA%\Dathinel\Lanzador` (o donde apunte `RASTREAR_LANZADOR`). **Daniel:** si el Lanzador se instala en otro sitio, hay que añadir la ruta a `LauncherLocator.Candidates`.
+7. **Sin módulo:** renombra la carpeta de `modulo-vision` y pulsa «Ejecutar» con «Detectar»: el aviso dice qué falta y para qué, sin rutas, y el botón «Abrir el Lanzador» aparece solo si `Lanzador.exe` está en `%LOCALAPPDATA%\Programs\Lanzador` (donde lo deja su instalador) o donde apunte `RASTREAR_LANZADOR`.
 
 ---
 

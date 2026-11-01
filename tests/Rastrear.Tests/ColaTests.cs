@@ -61,6 +61,9 @@ public class ColaTests
         cola.MarkCancelled();
         Assert.True(cola.HasPending);
         Assert.Equal("1 cancelado, 1 pendiente", cola.Summary);
+        cola.RequeueCancelled();
+        Assert.Equal("2 pendientes", cola.Summary);
+        Assert.Equal("a.mp4", cola.StartNext()!.FileName); // El cancelado se repite
 
         BatchQueue una = new();
         una.Enqueue([@"C:\v\solo.mp4"]);
@@ -86,7 +89,7 @@ public class ColaTests
         Assert.Equal(Path.Combine(dir, "clip-mascara.mp4"), OutputNaming.OutputPathFor(entrada, 1, backgroundMask: true, exists: _ => false));
         Assert.Equal(Path.Combine(dir, "clip-seguimiento.csv"), OutputNaming.OutputPathFor(entrada, 0, exists: _ => false));
         Assert.Equal(Path.Combine(dir, "clip-detecciones.json"), OutputNaming.OutputPathFor(entrada, 2, exists: _ => false));
-        Assert.Equal(Path.Combine(dir, "clip-reencuadre.mp4"), OutputNaming.OutputPathFor(entrada, 3, exists: _ => false));
+        Assert.Equal(Path.Combine(dir, "clip-reencuadrado.mp4"), OutputNaming.OutputPathFor(entrada, 3, exists: _ => false));
 
         HashSet<string> ocupados = [Path.Combine(dir, "clip-estabilizado.mp4"), Path.Combine(dir, "clip-estabilizado (2).mp4")];
         Assert.Equal(Path.Combine(dir, "clip-estabilizado (3).mp4"), OutputNaming.OutputPathFor(entrada, 4, exists: ocupados.Contains));

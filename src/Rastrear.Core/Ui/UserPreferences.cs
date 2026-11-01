@@ -108,7 +108,10 @@ public sealed class UserPreferences
     public void Save(string path)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-        File.WriteAllText(path, JsonSerializer.Serialize(this, RastrearJsonContext.Default.UserPreferences));
+        // Temporal y luego Move: un apagón a medio escribir no deja el JSON roto.
+        string tmp = path + ".tmp";
+        File.WriteAllText(tmp, JsonSerializer.Serialize(this, RastrearJsonContext.Default.UserPreferences));
+        File.Move(tmp, path, overwrite: true);
     }
 
     /// <summary>Guarda sin fallar: sin permiso o con el disco lleno, la próxima vez se parte de lo anterior.</summary>
