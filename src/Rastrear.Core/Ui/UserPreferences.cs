@@ -96,7 +96,8 @@ public sealed class UserPreferences
     {
         if (string.IsNullOrWhiteSpace(folder)) return null;
         string trimmed = folder.Trim();
-        return Path.IsPathRooted(trimmed) ? Path.TrimEndingDirectorySeparator(trimmed) : null;
+        // IsPathRooted acepta «C:» y «\salida», que dependen de la carpeta o la unidad actual.
+        return Path.IsPathFullyQualified(trimmed) ? Path.TrimEndingDirectorySeparator(trimmed) : null;
     }
 
     public static UserPreferences Load(string path)

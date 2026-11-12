@@ -138,6 +138,130 @@ public class ColaTests
     }
 
     [Fact]
+    public void Marcar_sin_archivo_en_marcha_no_cambia_nada()
+    {
+        BatchQueue cola = new();
+        cola.Enqueue([V("a.mp4"), V("b.mp4")]);
+
+        // Sin StartNext: marcar no toca a nadie ni rompe
+        cola.MarkDone(V("a-fondo.webm"));
+        cola.MarkFailed("error");
+        cola.MarkCancelled();
+        cola.ReportProgress(0.5, "Siguiendo");
+
+        Assert.Null(cola.Current);
+        Assert.Equal(string.Empty, cola.ProgressText);
+        Assert.All(cola.Items, i => Assert.Equal(BatchItemState.Pending, i.State));
+        Assert.Equal(BatchItemState.Running, cola.StartNext()!.State); // StartNext lo marca en curso
+        Assert.Equal("a.mp4", cola.Current!.FileName);
+    }
+
+    [Fact]
+    public void Cancelar_al_final_marca_cancelado_no_hecho_y_reanudar_lo_repite()
+    {
+        BatchQueue cola = new();
+        cola.Enqueue([V("a.mp4"), V("b.mp4")]);
+        BatchItem a = cola.StartNext()!;
+        cola.ReportProgress(1.0, "Quitando fondo");
+        cola.MarkCancelled();
+
+        Assert.Equal(BatchItemState.Cancelled, a.State);
+        Assert.Equal("cancelado", a.StatusText);
+        Assert.Equal(0.5, cola.OverallFraction); // el cancelado cuenta como terminado; «b» sigue pendiente
+
+        cola.RequeueCancelled();
+        Assert.Equal(BatchItemState.Pending, a.State);
+        Assert.Equal(0.0, a.Fraction);
+        Assert.Equal(string.Empty, a.Stage);
+        Assert.Same(a, cola.StartNext());
+    }
+
+    [Fact]
+    public void El_progreso_se_recorta_entre_0_y_100()
+    {
+        BatchQueue cola = new();
+        cola.Enqueue([V("a.mp4")]);
+        cola.StartNext();
+
+        cola.ReportProgress(1.5, "Codificando");
+        Assert.Equal("100 % · Codificando", cola.ProgressText);
+        cola.ReportProgress(-0.5, "Empezando");
+        Assert.Equal("0 % · Empezando", cola.ProgressText);
+        cola.ReportProgress(0.4, "");
+        Assert.Equal("40 %", cola.ProgressText);
+    }
+
+    [Fact]
+    public void Encolar_a_media_marcha_anyade_al_final_sin_repetidos()
+    {
+        BatchQueue cola = new();
+        cola.Enqueue([V("a.mp4")]);
+        cola.StartNext();
+        Assert.Equal(1, cola.Enqueue([V("b.mp4"), V("a.mp4"), V("A.MP4"), "  "])); // solo b entra
+        Assert.Equal(2, cola.Count);
+        Assert.True(cola.HasPending);
+        cola.MarkDone(V("a-fondo.webm"));
+        Assert.Equal("b.mp4", cola.StartNext()!.FileName);
+        cola.MarkDone(null);
+        Assert.Equal("2 hechos", cola.Summary);
+    }
+
+    [Fact]
+    public void Vaciar_reiniciar_y_recortar_con_uno_en_marcha_lanzan()
+    {
+        BatchQueue cola = new();
+        cola.Enqueue([V("a.mp4"), V("b.mp4")]);
+        cola.StartNext();
+        Assert.Throws<InvalidOperationException>(cola.Clear);
+        Assert.Throws<InvalidOperationException>(cola.Reset);
+        Assert.Throws<InvalidOperationException>(() => cola.TrimToTool(0, null));
+        Assert.Equal(BatchItemState.Running, cola.Items[0].State); // nada quedó tocado
+        Assert.Equal(2, cola.Count);
+    }
+
+    [Fact]
+    public async Task KillAll_espera_y_lista_los_que_no_salen()
+    {
+        // Un hijo que no sale a tiempo se lista por su nombre; el que ya salió ni se mata; y un Kill que
+        // lanza no tumba la espera de los demás.
+        ChildProcessRegistry.Scope scope = ChildProcessRegistry.BeginScope();
+        Assert.Same(scope, ChildProcessRegistry.Current);
+        Assert.Equal(0, scope.LiveCount);
+
+        bool muertoLento = false, muertoSalido = false;
+        using (ChildProcessRegistry.Track("ffmpeg (lento)", () => muertoLento = true, () => muertoLento, _ => Task.FromResult(false)))
+        using (ChildProcessRegistry.Track("módulo (terco)", () => throw new InvalidOperationException("ya salió"), () => false, _ => Task.FromResult(true)))
+        using (ChildProcessRegistry.Track("ffprobe (salido)", () => muertoSalido = true, () => true, _ => Task.FromResult(true)))
+        {
+            Assert.Equal(2, scope.LiveCount); // el salido no cuenta
+            IReadOnlyList<string> quedaron = await scope.KillAllAsync(TimeSpan.FromMilliseconds(50));
+            Assert.Equal(["ffmpeg (lento)"], quedaron);
+            Assert.True(muertoLento);
+            Assert.False(muertoSalido); // el que había salido no se toca
+        }
+    }
+
+    [Fact]
+    public async Task Cancelar_antes_de_empezar_o_al_final_no_hace_nada()
+    {
+        TaskExecutionController controlador = new();
+        Assert.False(await controlador.CancelAsync());        // Idle: nada que cancelar
+        controlador.ReportProgress(0.5, "No corre");          // se ignora sin ejecución
+        Assert.Equal(0.0, controlador.CurrentFraction);
+
+        CancellationToken ct = controlador.BeginExecution();
+        controlador.MarkCompleted();
+        Assert.False(await controlador.CancelAsync());        // ya acabó: no cancela
+        Assert.False(ct.IsCancellationRequested);
+
+        // Otra ejecución: cancelar dos veces, la segunda tampoco hace nada más
+        controlador.BeginExecution();
+        Assert.True(await controlador.CancelAsync());
+        Assert.False(await controlador.CancelAsync());        // Cancelling ≠ Running
+        controlador.MarkCancelled();
+    }
+
+    [Fact]
     public async Task Cancelar_mata_los_procesos_de_su_ejecucion_y_no_los_de_otra()
     {
         // Un solo proceso real, sin hijos (matar el árbol enumera procesos y es lo que tarda): «ping» con espera en

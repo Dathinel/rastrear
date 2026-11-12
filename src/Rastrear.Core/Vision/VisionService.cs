@@ -44,10 +44,11 @@ public static class VisionService
             throw new RastrearUserException($"No se encontró el módulo de visión en: {customPath}");
         }
 
+        string launcherRoot = Path.Combine(localAppData, "Dathinel", "Comun", "modulos", ModuleId);
         string?[] roots =
         [
             env("RASTREAR_MODULOS"),
-            Path.Combine(localAppData, "Dathinel", "Comun", "modulos", ModuleId),
+            launcherRoot,
             Path.Combine(localAppData, "Rodaje", "complementos", "modulos"),
             env("RODAJE_MODULOS"),
             Path.Combine(baseDirectory, "modulos"),
@@ -63,6 +64,8 @@ public static class VisionService
             string direct = Path.Combine(root, ModuleExe);
             if (File.Exists(direct)) return Path.GetFullPath(direct);
             IEnumerable<string> subdirs = Directory.GetDirectories(root)
+                // El Lanzador extrae en «<versión>.instalando» y la renombra al acabar: en su raíz, lo que no es una versión está a medias.
+                .Where(d => root != launcherRoot || Version.TryParse(Path.GetFileName(d), out _))
                 .OrderByDescending(d => Version.TryParse(Path.GetFileName(d), out Version? v) ? v : new Version(0, 0))
                 .ThenByDescending(d => d, StringComparer.OrdinalIgnoreCase);
             foreach (string sub in subdirs)

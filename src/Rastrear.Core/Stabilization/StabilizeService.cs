@@ -17,6 +17,12 @@ public static class StabilizeService
         IProgress<VideoProgress>? progress = null,
         CancellationToken cancellationToken = default)
     {
+        // NaN pasaría el recorte de CameraPath y dejaría todas las correcciones en NaN: un video en negro sin aviso.
+        if (!(intensity >= 0 && intensity <= 1))
+        {
+            throw new RastrearUserException("La intensidad de la estabilización debe ser un número entre 0 y 1.");
+        }
+
         string ffmpeg = FfmpegTool.FindFfmpeg(ffmpegPath);
         VideoInfo info = await FfmpegTool.ProbeAsync(inputVideo, ffmpeg, cancellationToken).ConfigureAwait(false);
 

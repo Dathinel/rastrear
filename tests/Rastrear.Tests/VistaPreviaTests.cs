@@ -80,12 +80,13 @@ public class VistaPreviaTests
     {
         public int Calls;
         public bool Exited;
+        public Exception? ErrorAlCerrar;
         public bool Disposed { get; private set; }
 
         public ValueTask DisposeAsync()
         {
             Disposed = true;
-            return ValueTask.CompletedTask;
+            return ErrorAlCerrar is { } ex ? ValueTask.FromException(ex) : ValueTask.CompletedTask;
         }
     }
 
@@ -211,5 +212,91 @@ public class VistaPreviaTests
         Assert.Equal(2, arrancados.Count);
         Assert.True(nuevaSesion.IsAlive);
         await nuevaSesion.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task El_arranque_que_falla_no_deja_nada_y_la_siguiente_llamada_lo_reintenta()
+    {
+        // Un módulo que no responde al arrancar: la excepción sale tal cual, no queda medio módulo
+        // colgado y la sesión no queda envenenada (la puerta se suelta y se reintenta limpio).
+        int intentos = 0;
+        List<ModuloFalso> arrancados = [];
+        ModuleSession<ModuloFalso> sesion = new(
+            _ =>
+            {
+                intentos++;
+                if (intentos == 1) throw new RastrearModuleException("El módulo de visión no responde");
+                ModuloFalso m = new();
+                arrancados.Add(m);
+                return Task.FromResult(m);
+            },
+            m => m.Exited);
+
+        var ex = await Assert.ThrowsAsync<RastrearModuleException>(() => sesion.RunAsync((m, _) => Task.FromResult(++m.Calls)));
+        Assert.Equal("El módulo de visión no responde", ex.Message);
+        Assert.Equal(0, sesion.StartCount);   // solo cuentan los arranques que llegaron a buen puerto
+        Assert.False(sesion.IsAlive);
+        Assert.Empty(arrancados);             // nada que cerrar: no se colgó ningún proceso
+
+        Assert.Equal(1, await sesion.RunAsync((m, _) => Task.FromResult(++m.Calls)));
+        Assert.Equal(1, sesion.StartCount);
+        Assert.True(sesion.IsAlive);
+        await sesion.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task La_llamada_cancelada_esperando_en_la_puerta_no_toca_el_modulo()
+    {
+        List<ModuloFalso> arrancados = [];
+        ModuleSession<ModuloFalso> sesion = new(
+            _ => { ModuloFalso m = new(); arrancados.Add(m); return Task.FromResult(m); },
+            m => m.Exited);
+
+        // La primera llamada ocupa la puerta un rato
+        TaskCompletionSource dentro = new();
+        TaskCompletionSource suelta = new();
+        Task<int> primera = sesion.RunAsync(async (m, _) =>
+        {
+            m.Calls++;
+            dentro.SetResult();
+            await suelta.Task;
+            return m.Calls;
+        });
+        await dentro.Task;
+
+        // La segunda llega con la cancelación ya pedida: espera en la puerta y salta sin tocar el módulo
+        using CancellationTokenSource cts = new();
+        await cts.CancelAsync();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(
+            () => sesion.RunAsync((m, _) => Task.FromResult(++m.Calls), cts.Token));
+        Assert.Equal(1, arrancados[0].Calls);      // ni siquiera entró
+        Assert.False(arrancados[0].Disposed);
+        Assert.True(sesion.IsAlive);
+        Assert.Equal(1, sesion.StartCount);        // no arrancó otro
+
+        suelta.SetResult();
+        Assert.Equal(1, await primera);
+        await sesion.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task Un_modulo_que_no_cierra_no_se_lleva_el_error_de_la_llamada()
+    {
+        // La llamada falla y además el módulo no responde al cerrarlo: sale el error de la llamada
+        // (el de cierre se traga, como al apagar un proceso ya muerto) y la sesión puede seguir.
+        ModuleSession<ModuloFalso> sesion = new(
+            _ => Task.FromResult(new ModuloFalso { ErrorAlCerrar = new IOException("pipe roto") }),
+            m => m.Exited);
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => sesion.RunAsync<int>((_, _) => throw new InvalidOperationException("el módulo devolvió basura")));
+        Assert.Equal("el módulo devolvió basura", ex.Message);
+        Assert.False(sesion.IsAlive);
+
+        // Cerrar a mano con un módulo muerto tampoco lanza
+        await sesion.RunAsync((m, _) => Task.FromResult(0));
+        await sesion.CloseAsync();
+        Assert.False(sesion.IsAlive);
+        await sesion.DisposeAsync();
     }
 }

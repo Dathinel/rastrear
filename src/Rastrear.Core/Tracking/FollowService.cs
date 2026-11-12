@@ -14,6 +14,9 @@ public readonly record struct RegionTargetSpec(double X, double Y, double W, dou
 
 public static class FollowService
 {
+    /// <summary>Lado máximo del patrón y de la zona de búsqueda de un punto: la ventana que el seguidor de Rodaje lee alrededor del punto no pasa de ahí.</summary>
+    public const int MaxPointWindowSide = 1600;
+
     public static async Task<FollowResult> FollowAsync(
         string videoPath,
         PointTargetSpec? point,
@@ -28,6 +31,19 @@ public static class FollowService
         if (point is null && region is null)
         {
             throw new RastrearUserException("Debe especificar un punto (--punto x,y) o una región (--region x,y,w,h) a seguir.");
+        }
+
+        // De la región, las esquinas y no el ancho y el alto: 3e38 + 3e38 son dos números finitos cuya suma ya no cabe en un float.
+        double[] coords = point is { } pt ? [pt.X, pt.Y] : [region!.Value.X, region.Value.Y, region.Value.X + region.Value.W, region.Value.Y + region.Value.H];
+        if (!coords.All(c => float.IsFinite((float)c)))
+        {
+            throw new RastrearUserException("Las coordenadas del punto o la región a seguir deben ser números finitos.");
+        }
+
+        // El seguidor de Rodaje no acota estos lados: con uno enorme pide gigas de memoria o desborda el tamaño de sus matrices.
+        if (point is not null && (patternSize > MaxPointWindowSide || searchSize > MaxPointWindowSide))
+        {
+            throw new RastrearUserException($"El patrón y la zona de búsqueda no pueden pasar de {MaxPointWindowSide} píxeles de lado.");
         }
 
         string ffmpeg = FfmpegTool.FindFfmpeg(ffmpegPath);
@@ -84,7 +100,7 @@ public static class FollowService
                     {
                         PointResult[] results = pointTracker.Step(luma);
                         PointResult res = results[0];
-                        frames.Add(new FollowFrame(frameIdx, t, res.Position.X, res.Position.Y, res.Confidence, res.State.ToString()));
+                        frames.Add(LostIfNotFinite(new FollowFrame(frameIdx, t, res.Position.X, res.Position.Y, res.Confidence, res.State.ToString()), frames[^1]));
                     }
                     else if (regionTracker is not null)
                     {
@@ -92,7 +108,7 @@ public static class FollowService
                         (double cx, double cy) = step.Motion.Apply(initialCenter.X, initialCenter.Y);
                         double conf = step.Lost ? 0.0 : Math.Clamp(step.Inliers / 24.0, 0.3, 1.0);
                         string state = step.Lost ? "Lost" : "Good";
-                        frames.Add(new FollowFrame(frameIdx, t, cx, cy, conf, state));
+                        frames.Add(LostIfNotFinite(new FollowFrame(frameIdx, t, cx, cy, conf, state), frames[^1]));
                     }
                 }
 
@@ -113,6 +129,15 @@ public static class FollowService
             }
         }
     }
+
+    /// <summary>
+    /// Un cuadro sin posición finita (el seguimiento divergió) queda como perdido en la última posición válida y con
+    /// confianza 0, igual que los demás cuadros perdidos: el JSON no admite NaN ni infinito y el CSV los dejaría como texto.
+    /// </summary>
+    public static FollowFrame LostIfNotFinite(FollowFrame frame, FollowFrame previous) =>
+        double.IsFinite(frame.X) && double.IsFinite(frame.Y) && double.IsFinite(frame.Confianza)
+            ? frame
+            : frame with { X = previous.X, Y = previous.Y, Confianza = 0.0, Estado = "Lost" };
 
     public static void WriteCsv(FollowResult result, TextWriter writer)
     {

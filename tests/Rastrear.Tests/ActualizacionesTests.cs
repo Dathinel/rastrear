@@ -187,4 +187,112 @@ public sealed class ActualizacionesTests : TemporaryFolderTest
         Assert.Null(viejas.DismissedVersion);
         Assert.Equal("detectar", viejas.Tool);
     }
+
+    [Fact]
+    public void Las_24_horas_en_el_borde_exacto()
+    {
+        // En el instante justo ya toca consultar (>=); un tick antes, no
+        Assert.True(UpdateChecker.IsDue(Ahora - UpdateChecker.MinimumInterval, Ahora));
+        Assert.False(UpdateChecker.IsDue(Ahora - UpdateChecker.MinimumInterval + TimeSpan.FromTicks(1), Ahora));
+        Assert.True(UpdateChecker.IsDue(Ahora - UpdateChecker.MinimumInterval - TimeSpan.FromTicks(1), Ahora));
+        Assert.Equal(TimeSpan.FromHours(24), UpdateChecker.MinimumInterval);
+    }
+
+    [Fact]
+    public async Task En_el_borde_de_las_24_horas_se_consulta()
+    {
+        UserPreferences prefs = new() { LastUpdateCheck = Ahora - UpdateChecker.MinimumInterval };
+        FuenteFalsa fuente = new(Json("v1.1.0"));
+        UpdateCheckResult r = await UpdateChecker.CheckAsync(fuente, Actual, prefs, Ahora);
+        Assert.Equal(UpdateCheckOutcome.NewVersion, r.Outcome);
+        Assert.Equal(1, fuente.Consultas); // en el borde exacto ya se consulta
+    }
+
+    [Theory]
+    [InlineData("v1.2.3", true)]
+    [InlineData("V1.2", true)]       // «V» mayúscula también vale
+    [InlineData("v01.02.003", true)] // ceros a la izquierda: 1.2.3
+    [InlineData("0.0", true)]
+    [InlineData("v999999.1.1", true)]
+    [InlineData("vv1.2", false)]     // solo se quita una «v»
+    [InlineData("v1", false)]
+    [InlineData("+1.2", false)]      // ni signo…
+    [InlineData("-1.2", false)]
+    [InlineData("1.2 ", true)]       // …pero espacios alrededor sí se limpian
+    [InlineData("1 .2", false)]      // huecos por dentro no
+    [InlineData("1.2.", false)]
+    [InlineData(".1.2", false)]
+    [InlineData("1.2.3456789", false)] // pieza de más de 6 cifras: fuera
+    [InlineData("v1.2.3+build.5", false)]
+    public void Etiquetas_con_formas_raras(string tag, bool esperado)
+    {
+        Assert.Equal(esperado, UpdateChecker.TryParseTag(tag, out Version? v));
+        if (esperado) Assert.NotNull(v); else Assert.Null(v);
+    }
+
+    [Fact]
+    public void Etiqueta_con_ceros_a_la_izquierda_da_la_version_normal()
+    {
+        Assert.True(UpdateChecker.TryParseTag("v01.02.003", out Version? v));
+        Assert.Equal(new Version(1, 2, 3), v);
+        Assert.True(UpdateChecker.TryParseTag("V2.0", out Version? v2));
+        Assert.Equal(new Version(2, 0, 0), v2);
+    }
+
+    [Fact]
+    public void La_pagina_de_la_release_solo_vale_si_es_github_por_https()
+    {
+        // github.com.evil.com no es github.com: cae a la página de la etiqueta en el repo
+        Assert.Equal("https://github.com/Dathinel/rastrear/releases/tag/v1.1.0",
+            UpdateChecker.ParseRelease(Json("v1.1.0", url: "https://github.com.evil.com/x"))!.Url);
+
+        // Mayúsculas en el host sí valen
+        ReleaseInfo r = UpdateChecker.ParseRelease(Json("v1.1.0", url: "https://GITHUB.com/Dathinel/rastrear/releases/tag/v1.1.0"))!;
+        Assert.Equal("https://github.com/Dathinel/rastrear/releases/tag/v1.1.0", r.Url);
+
+        // html_url que no es texto: un tipo cambiado descarta la release entera, como con tag_name
+        Assert.Null(UpdateChecker.ParseRelease("""{"tag_name":"v1.1.0","html_url":123,"draft":false,"prerelease":false}"""));
+
+        // Una etiqueta con espacios se limpia y la URL de reserva sale escapada
+        r = UpdateChecker.ParseRelease(Json(" v1.2.0 ", url: null))!;
+        Assert.Equal("v1.2.0", r.Tag);
+        Assert.Equal("https://github.com/Dathinel/rastrear/releases/tag/v1.2.0", r.Url);
+    }
+
+    [Fact]
+    public void Mas_tarde_es_por_etiqueta_exacta_no_por_version()
+    {
+        // «Más tarde» a «v1.1.0» no vale para «v1.1» aunque sea la misma versión: es texto ordinal
+        UpdateCheckResult r = UpdateChecker.Decide(
+            new ReleaseInfo("v1.1", new Version(1, 1, 0), "https://github.com/x"), Actual, "v1.1.0");
+        Assert.Equal(UpdateCheckOutcome.NewVersion, r.Outcome);
+
+        // Mayúsculas y minúsculas sí se igualan
+        r = UpdateChecker.Decide(new ReleaseInfo("V1.1.0", new Version(1, 1, 0), "https://github.com/x"), Actual, "v1.1.0");
+        Assert.Equal(UpdateCheckOutcome.Dismissed, r.Outcome);
+
+        // Sin release leída: fallo
+        r = UpdateChecker.Decide(null, Actual, "v1.1.0");
+        Assert.Equal(UpdateCheckOutcome.Failed, r.Outcome);
+        Assert.Null(r.Release);
+    }
+
+    [Fact]
+    public async Task Un_feed_que_tarda_demasiado_es_fallo_silencioso_no_cuelgue()
+    {
+        // La fuente se cancela (tiempo límite de 5 s en GitHubReleaseFeed): queda apuntado y es Failed
+        UserPreferences prefs = new();
+        UpdateCheckResult r = await UpdateChecker.CheckAsync(new FuenteTarda(), Actual, prefs, Ahora);
+        Assert.Equal(UpdateCheckOutcome.Failed, r.Outcome);
+        Assert.Equal(Ahora, prefs.LastUpdateCheck);
+        Assert.Equal(TimeSpan.FromSeconds(5), GitHubReleaseFeed.Timeout);
+        Assert.Equal("https://api.github.com/repos/Dathinel/rastrear/releases/latest", GitHubReleaseFeed.LatestReleaseUrl);
+    }
+
+    /// <summary>La fuente que se pasa del tiempo límite: lanza como si el HttpClient hubiera cancelado.</summary>
+    private sealed class FuenteTarda : IReleaseFeed
+    {
+        public Task<string> FetchLatestReleaseJsonAsync(CancellationToken cancellationToken) =>
+            Task.FromException<string>(new TaskCanceledException("tiempo límite"));
+    }
 }
