@@ -18,6 +18,13 @@
 - Por dentro: `ChildProcessRegistry` sube a `Rastrear.Core`; `ToolParameters` (dispositivo, calidad, objetivo, aspecto, modo) normaliza en un solo sitio lo que guardan las preferencias y lo que recibe el módulo; `VisionService.StartModuleAsync` es el único arranque del módulo; `AtomicFile` escribe `preferencias.json` y `ventana.json` por temporal y Move; las pruebas con carpeta temporal comparten `TemporaryFolderTest` y la de cancelar arranca un solo proceso sin hijos.
 - Arreglos de la revisión de bloque (#4): cierre esperado de la sesión de vista previa antes de ejecutar y al abrir otro video (sin procesos duplicados ni huérfanos), robustez frente a carreras al soltar «Después» y mapeo centralizado de calidad y dispositivo en `ToolParameters`.
 
+### Arreglado
+- `AtomicFile.WriteAllText` ya no deja el `.tmp` en la carpeta cuando la escritura o el cambio de nombre final fallan (destino de solo lectura, disco lleno).
+- La carpeta de salida solo admite rutas completas: `C:` o `\salida` (que dependen de la carpeta o la unidad actual) vuelven a «Junto al video» (`UserPreferences.NormalizeFolder`).
+- «Seguir»: un cuadro en el que el seguimiento diverge (posición o confianza NaN o infinita) queda como perdido en la última posición válida y con confianza 0, así que exportar a JSON ya no falla y el CSV no trae `NaN` (`FollowService.LostIfNotFinite`); un punto o una región con coordenadas no finitas (`--punto NaN,5`) se rechaza con un error claro antes de abrir el video.
+- «Estabilizar»: una intensidad fuera de 0 a 1 o NaN (`--intensidad NaN` en la Cli) se rechaza con un error claro en vez de producir un video en negro.
+- En la carpeta de módulos del Lanzador solo cuentan las carpetas de versión: una extracción a medias (`<versión>.instalando`) u otra carpeta suelta ya no se toma por el módulo de visión (`VisionService.FindModule`).
+
 ## [1.0.0] - 2026-10-24
 
 ### Añadido

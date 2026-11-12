@@ -18,7 +18,17 @@ public static class AtomicFile
         }
 
         string tmp = path + TemporarySuffix;
-        File.WriteAllText(tmp, contents);
-        File.Move(tmp, path, overwrite: true);
+        try
+        {
+            File.WriteAllText(tmp, contents);
+            File.Move(tmp, path, overwrite: true);
+        }
+        catch
+        {
+            // Sin esto, un destino de solo lectura o un disco lleno dejan el temporal ahí para siempre.
+            try { File.Delete(tmp); }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
+            throw;
+        }
     }
 }
