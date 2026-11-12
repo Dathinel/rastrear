@@ -14,6 +14,9 @@ public readonly record struct RegionTargetSpec(double X, double Y, double W, dou
 
 public static class FollowService
 {
+    /// <summary>Lado máximo del patrón y de la zona de búsqueda de un punto: la ventana que el seguidor de Rodaje lee alrededor del punto no pasa de ahí.</summary>
+    public const int MaxPointWindowSide = 1600;
+
     public static async Task<FollowResult> FollowAsync(
         string videoPath,
         PointTargetSpec? point,
@@ -30,10 +33,17 @@ public static class FollowService
             throw new RastrearUserException("Debe especificar un punto (--punto x,y) o una región (--region x,y,w,h) a seguir.");
         }
 
-        double[] coords = point is { } pt ? [pt.X, pt.Y] : [region!.Value.X, region.Value.Y, region.Value.W, region.Value.H];
+        // De la región, las esquinas y no el ancho y el alto: 3e38 + 3e38 son dos números finitos cuya suma ya no cabe en un float.
+        double[] coords = point is { } pt ? [pt.X, pt.Y] : [region!.Value.X, region.Value.Y, region.Value.X + region.Value.W, region.Value.Y + region.Value.H];
         if (!coords.All(c => float.IsFinite((float)c)))
         {
             throw new RastrearUserException("Las coordenadas del punto o la región a seguir deben ser números finitos.");
+        }
+
+        // El seguidor de Rodaje no acota estos lados: con uno enorme pide gigas de memoria o desborda el tamaño de sus matrices.
+        if (point is not null && (patternSize > MaxPointWindowSide || searchSize > MaxPointWindowSide))
+        {
+            throw new RastrearUserException($"El patrón y la zona de búsqueda no pueden pasar de {MaxPointWindowSide} píxeles de lado.");
         }
 
         string ffmpeg = FfmpegTool.FindFfmpeg(ffmpegPath);

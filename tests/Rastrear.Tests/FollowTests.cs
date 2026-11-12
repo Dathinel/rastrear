@@ -351,4 +351,35 @@ public sealed class FollowTests(ITestOutputHelper output)
             () => FollowService.FollowAsync("no-existe.mp4", point: null, new RegionTargetSpec(0, 0, a, b)));
         Assert.Contains("finitos", ex.Message);
     }
+
+    [Fact]
+    public async Task Region_whose_far_corner_overflows_fails_clear_before_touching_the_video()
+    {
+        // «--region 3e38,0,3e38,10»: cada número cabe en un float pero x + w no; el centro salía infinito y el JSON lanzaba
+        RastrearUserException ex = await Assert.ThrowsAsync<RastrearUserException>(
+            () => FollowService.FollowAsync("no-existe.mp4", point: null, new RegionTargetSpec(3e38, 0, 3e38, 10)));
+        Assert.Contains("finitos", ex.Message);
+
+        ex = await Assert.ThrowsAsync<RastrearUserException>(
+            () => FollowService.FollowAsync("no-existe.mp4", point: null, new RegionTargetSpec(0, -3e38, 10, -3e38)));
+        Assert.Contains("finitos", ex.Message);
+    }
+
+    [Theory]
+    [InlineData(FollowService.MaxPointWindowSide + 1, 121)]
+    [InlineData(int.MaxValue, 121)]
+    [InlineData(41, FollowService.MaxPointWindowSide + 1)]
+    [InlineData(41, int.MaxValue)]
+    public async Task Oversized_pattern_or_search_fails_clear_before_touching_the_video(int patternSize, int searchSize)
+    {
+        // «--patron 100000» pedía gigas de memoria y acababa en IndexOutOfRangeException; con int.MaxValue, OverflowException
+        RastrearUserException ex = await Assert.ThrowsAsync<RastrearUserException>(
+            () => FollowService.FollowAsync("no-existe.mp4", new PointTargetSpec(40, 40), region: null, patternSize, searchSize));
+        Assert.Contains("1600", ex.Message);
+
+        // Con una región no se usan: el error es el del video que falta, no el de los lados
+        ex = await Assert.ThrowsAsync<RastrearUserException>(
+            () => FollowService.FollowAsync("no-existe.mp4", point: null, new RegionTargetSpec(0, 0, 10, 10), patternSize, searchSize));
+        Assert.DoesNotContain("1600", ex.Message);
+    }
 }
