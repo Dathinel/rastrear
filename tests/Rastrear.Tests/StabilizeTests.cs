@@ -98,7 +98,7 @@ public sealed class StabilizeTests(ITestOutputHelper output)
         Assert.Equal(0.0, r.ShakeAfter);
     }
 
-    [Fact(Skip = "FALLO REAL pendiente: se arregla en Rodaje (CameraPath) y entra al subir el submódulo")]
+    [Fact]
     public void Uniform_pan_is_not_treated_as_shake()
     {
         // Panorámica constante: la segunda diferencia es cero; el suavizado conserva rectas.
@@ -111,7 +111,7 @@ public sealed class StabilizeTests(ITestOutputHelper output)
         StabilizationResult r = CameraPath.Stabilize(motions, 30.0, 16.0 / 9.0, new StabilizeOptions(1.0, AutoCrop: true));
 
         Assert.Equal(0.0, r.ShakeBefore, 10);
-        // FALLO REAL: con el núcleo gaussiano más ancho que la señal (radio 90 en 60 cuadros) la reflexión
+        // Regresión de Rodaje #497. Antes, con el núcleo gaussiano más ancho que la señal (radio 90 en 60 cuadros) la reflexión
         // impar de Smooth recorta el índice espejo a n-1; la rampa se curva en los extremos, salen
         // correcciones que no son cero y el temblor sube (4,5e-6) en vez de «quedar igual» (CameraPath).
         Assert.True(r.ShakeAfter <= r.ShakeBefore + 1e-10, $"El temblor subió: {r.ShakeAfter} > {r.ShakeBefore}");
@@ -192,7 +192,7 @@ public sealed class StabilizeTests(ITestOutputHelper output)
         Assert.Contains("intensidad", ex.Message);
     }
 
-    [Fact(Skip = "FALLO REAL pendiente: se arregla en Rodaje (CameraPath) y entra al subir el submódulo")]
+    [Fact]
     public void Nan_intensity_does_not_corrupt_corrections()
     {
         var motions = new Similarity[60];
@@ -203,7 +203,7 @@ public sealed class StabilizeTests(ITestOutputHelper output)
 
         StabilizationResult r = CameraPath.Stabilize(motions, 30.0, 16.0 / 9.0, new StabilizeOptions(double.NaN, AutoCrop: true));
 
-        // FALLO REAL: con intensidad NaN la sigma queda NaN, el núcleo gaussiano degenera y todas las
+        // Regresión de Rodaje #497. Antes, con intensidad NaN la sigma queda NaN, el núcleo gaussiano degenera y todas las
         // correcciones salen NaN (además ShakeAfter = NaN): el video estabilizado sale negro sin avisar.
         Assert.All(r.Corrections, c => Assert.True(c.IsFinite, $"Corrección no finita: {c}"));
         Assert.True(double.IsFinite(r.ShakeAfter), $"ShakeAfter no finito: {r.ShakeAfter}");
