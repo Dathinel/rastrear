@@ -45,9 +45,12 @@ public static class VisionService
         }
 
         string launcherRoot = Path.Combine(localAppData, "Dathinel", "Comun", "modulos", ModuleId);
+        string? configured = env("RASTREAR_MODULOS");
+        string? configuredVersions = string.IsNullOrWhiteSpace(configured) ? null : Path.Combine(configured, ModuleId);
         string?[] roots =
         [
-            env("RASTREAR_MODULOS"),
+            configured,
+            Directory.Exists(configuredVersions) ? configuredVersions : null,
             launcherRoot,
             Path.Combine(localAppData, "Rodaje", "complementos", "modulos"),
             env("RODAJE_MODULOS"),
@@ -65,7 +68,7 @@ public static class VisionService
             if (File.Exists(direct)) return Path.GetFullPath(direct);
             IEnumerable<string> subdirs = Directory.GetDirectories(root)
                 // El Lanzador extrae en «<versión>.instalando» y la renombra al acabar: en su raíz, lo que no es una versión está a medias.
-                .Where(d => root != launcherRoot || Version.TryParse(Path.GetFileName(d), out _))
+                .Where(d => (root != launcherRoot && root != configuredVersions) || Version.TryParse(Path.GetFileName(d), out _))
                 .OrderByDescending(d => Version.TryParse(Path.GetFileName(d), out Version? v) ? v : new Version(0, 0))
                 .ThenByDescending(d => d, StringComparer.OrdinalIgnoreCase);
             foreach (string sub in subdirs)

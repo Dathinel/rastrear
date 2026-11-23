@@ -205,6 +205,7 @@ internal static class Program
         {
             salida = OutputNaming.OutputPathFor(inputFile, OutputNaming.ForTool(0).Suffix, "." + formato);
         }
+        ValidateOutput(inputFile, salida);
 
         Console.Error.WriteLine($"Siguiendo objetivo en «{Path.GetFileName(inputFile)}»...");
         FollowResult result = await FollowService.FollowAsync(
@@ -315,6 +316,7 @@ internal static class Program
         {
             salida = OutputNaming.OutputPathFor(inputFile, 1, backgroundMask: formato == "mascara");
         }
+        ValidateOutput(inputFile, salida);
 
         Console.Error.WriteLine($"Quitando fondo de «{Path.GetFileName(inputFile)}» ({formato}, calidad {calidad})...");
         await VisionService.RemoveBackgroundAsync(
@@ -384,6 +386,7 @@ internal static class Program
         {
             salida = OutputNaming.OutputPathFor(inputFile, 2);
         }
+        ValidateOutput(inputFile, salida);
 
         Console.Error.WriteLine($"Detectando {objetivo} en «{Path.GetFileName(inputFile)}»...");
         DetectionResult result = await VisionService.DetectAsync(
@@ -494,6 +497,7 @@ internal static class Program
         {
             salida = OutputNaming.OutputPathFor(inputFile, 3);
         }
+        ValidateOutput(inputFile, salida);
 
         Console.Error.WriteLine($"Reencuadrando «{Path.GetFileName(inputFile)}» a relación {targetAspect:0.###}...");
         ReframeOutput output = await VisionService.ReframeAsync(
@@ -562,6 +566,7 @@ internal static class Program
         {
             salida = OutputNaming.OutputPathFor(inputFile, 4);
         }
+        ValidateOutput(inputFile, salida);
 
         Console.Error.WriteLine($"Estabilizando «{Path.GetFileName(inputFile)}» (intensidad {intensity:0.##}, recorte automático: {autoCrop})...");
         StabilizationResult result = await StabilizeService.StabilizeAsync(
@@ -577,6 +582,14 @@ internal static class Program
         Console.Error.WriteLine($"Video estabilizado generado con éxito: {salida}");
         Console.Error.WriteLine($"Temblor reducido de {result.ShakeBefore:0.###} a {result.ShakeAfter:0.###} (zoom ×{result.Zoom:0.###})");
         return 0;
+    }
+
+    private static void ValidateOutput(string input, string output)
+    {
+        if (output != "-" && string.Equals(Path.GetFullPath(input), Path.GetFullPath(output), StringComparison.OrdinalIgnoreCase))
+        {
+            throw new RastrearUserException("La salida debe ser distinta del video de entrada.");
+        }
     }
 
     private static void PrintUsage()
