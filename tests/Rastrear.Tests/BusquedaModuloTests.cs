@@ -47,6 +47,16 @@ public sealed class BusquedaModuloTests : IDisposable
     }
 
     [Fact]
+    public void El_lanzador_personalizado_busca_la_ultima_version_completa()
+    {
+        _env["RASTREAR_MODULOS"] = Path.Combine(_raiz, "comun", "modulos");
+        Coloca("comun", "modulos", "modulo-vision", "2.0.0.instalando");
+        string instalado = Coloca("comun", "modulos", "modulo-vision", "1.10.0");
+        Coloca("comun", "modulos", "modulo-vision", "1.2.0");
+        Assert.Equal(instalado, Busca());
+    }
+
+    [Fact]
     public void Sin_modulo_lista_las_rutas_probadas()
     {
         _env["RASTREAR_MODULOS"] = Path.Combine(_raiz, "nada");
